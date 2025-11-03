@@ -153,33 +153,7 @@
             text-align: center;
         }
         
-        .hz-flash {
-            width: 60px;
-            height: 60px;
-            background: #666;
-            border: 2px solid #333;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            font-weight: bold;
-            color: white;
-            transition: all 0.05s ease;
-            cursor: help;
-        }
-        
-        .hz-flash:hover::after {
-            content: " Visual Hz Metronome";
-            position: absolute;
-            margin-left: 70px;
-            background: #333;
-            color: white;
-            padding: 5px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-            white-space: nowrap;
-        }
+
     </style>
 </head>
 <body>
@@ -191,9 +165,6 @@
         <div class="timeline-diagnostics">
             <div id="timelineStatus" class="timeline-status">
                 Timeline Ready
-            </div>
-            <div id="hzFlash" class="hz-flash">
-                Hz Flash
             </div>
             <canvas id="glslBlinker" width="60" height="60" style="border: 2px solid #333; border-radius: 50%;">
                 GLSL not supported
@@ -376,10 +347,9 @@
                 const config = logJourneyMap();
                 console.log('🎵 Started playing with configuration:', config);
                 
-                // Start simple blinking with plateau1 Hz
+                // Start GLSL blinking with plateau1 Hz
                 const startHz = config.plateau1.hz || 5;
                 updateStatus(`Playing ${startHz}Hz`);
-                startBlinking(startHz);
                 startGLSLBlinking(startHz);
                 
             } else {
@@ -389,51 +359,14 @@
                 btn.classList.remove('playing');
                 console.log('⏹ Stopped playing');
                 
-                // Stop blinking
-                stopBlinking();
+                // Stop GLSL blinking
                 stopGLSLBlinking();
                 updateStatus('Timeline Ready');
             }
         }
         
-        // Simple blinking system - focus on visual continuity first
-        let blinkInterval;
-        let statusDisplay, flashElement;
-        let currentHz = 0;
-        
-        // Core blinking function - MUST NEVER STOP
-        function startBlinking(hz) {
-            if (blinkInterval) {
-                clearInterval(blinkInterval);
-            }
-            
-            if (hz <= 0) return;
-            
-            currentHz = hz;
-            const intervalMs = (1000 / hz); // Convert Hz to millisecond interval
-            
-            console.log(`Starting blink at ${hz}Hz (${intervalMs.toFixed(1)}ms interval)`);
-            
-            blinkInterval = setInterval(() => {
-                // Flash green, then back to gray
-                flashElement.style.backgroundColor = '#4CAF50';
-                setTimeout(() => {
-                    flashElement.style.backgroundColor = '#666';
-                }, 50); // 50ms flash duration
-            }, intervalMs);
-        }
-        
-        function stopBlinking() {
-            if (blinkInterval) {
-                clearInterval(blinkInterval);
-                blinkInterval = null;
-            }
-            if (flashElement) {
-                flashElement.style.backgroundColor = '#666';
-            }
-            currentHz = 0;
-            console.log('Blinking stopped');
-        }
+        // Status display management
+        let statusDisplay;
 
         // WebGL/GLSL Low-Latency Visual System
         let gl;
@@ -598,7 +531,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Get visual elements
             statusDisplay = document.getElementById('timelineStatus');
-            flashElement = document.getElementById('hzFlash');
             
             // Initialize WebGL for low-latency blinking
             const webglSupported = initWebGL();
@@ -618,10 +550,9 @@
                     if (isPlaying) {
                         const config = logJourneyMap();
                         const newHz = config.plateau1.hz || 5;
-                        if (newHz !== currentHz) {
-                            console.log(`Hz changed to ${newHz}, updating blink rate`);
+                        if (newHz !== glCurrentHz) {
+                            console.log(`Hz changed to ${newHz}, updating GLSL blink rate`);
                             updateStatus(`Playing ${newHz}Hz`);
-                            startBlinking(newHz);
                             startGLSLBlinking(newHz);
                         }
                     }
