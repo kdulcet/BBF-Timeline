@@ -350,7 +350,11 @@
                 // Start real timeline system
                 updateStatus(`Starting Timeline...`);
                 startTimelineTracking();
-                // startGLSLBlinking(startHz); // DISABLED - will connect to real timeline events
+                
+                // Initialize GLSL blinking system (32n pulse events will trigger blinks)
+                if (gl) {
+                    console.log('GLSL system ready for 32n pulse events');
+                }
                 
             } else {
                 // Stop playing  
@@ -361,7 +365,9 @@
                 
                 // Stop real timeline system
                 stopTimelineTracking();
-                // stopGLSLBlinking(); // DISABLED
+                
+                // Stop GLSL blinking system
+                stopGLSLBlinking();
                 updateStatus('Timeline Ready');
             }
         }
@@ -454,7 +460,7 @@
                 return;
             }
             
-            // Update every 100ms for smooth status updates
+            // Update every 100ms for smooth status display
             timelineUpdateInterval = setInterval(updateTimelineStatus, 100);
             updateTimelineStatus(); // Initial update
         }
@@ -510,10 +516,7 @@
             
             updateStatus(statusText);
             
-            // Update GLSL blinking only if Hz changed
-            if (currentHz !== glCurrentHz) {
-                startGLSLBlinking(currentHz);
-            }
+            // NOTIFICATION ONLY - blink comes from 32n pulse listener, not polling
         }
 
         // WebGL/GLSL Low-Latency Visual System
@@ -642,6 +645,20 @@
             }
         }
         
+        function updateGLSLHz(hz) {
+            if (!gl) return;
+            
+            // Start blinking if not already running
+            if (!glAnimationId && hz > 0) {
+                glCurrentHz = hz;
+                glStartTime = performance.now() / 1000.0;
+                renderGLSL();
+            } else if (glAnimationId) {
+                // Just update Hz without restarting timing - smooth transitions
+                glCurrentHz = hz;
+            }
+        }
+        
         function renderGLSL() {
             const currentTime = performance.now() / 1000.0;
             const elapsedTime = currentTime - glStartTime;
@@ -704,6 +721,35 @@
             
             // Play/Stop button listener
             document.getElementById('playStopBtn').addEventListener('click', togglePlayStop);
+            
+            // Timeline event listeners - connect 32n pulse to GLSL blinking
+            document.addEventListener('timeline.pulse.32n', (event) => {
+                const { hz, time } = event.detail;
+                
+                // Trigger GLSL blink on each 32n pulse
+                if (gl && hz > 0) {
+                    updateGLSLHz(hz);
+                }
+                
+                console.log(`32n Pulse: ${hz.toFixed(2)}Hz at ${time.toFixed(3)}s`);
+            });
+            
+            // Timeline state change listeners
+            document.addEventListener('timeline.started', (event) => {
+                console.log('Timeline Started:', event.detail);
+                updateStatus('Timeline Running...');
+            });
+            
+            document.addEventListener('timeline.stopped', (event) => {
+                console.log('Timeline Stopped:', event.detail);
+                stopGLSLBlinking();
+                updateStatus('Timeline Ready');
+            });
+            
+            document.addEventListener('timeline.hz.changed', (event) => {
+                const { hz, wave_type } = event.detail;
+                console.log(`Hz Changed: ${hz.toFixed(2)}Hz (${wave_type})`);
+            });
             
             // Initialize status
             updateStatus('Timeline Ready');
