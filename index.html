@@ -180,7 +180,7 @@
             <div class="plateau">
                 <label>Plateau 1</label>
                 <div class="input-label">hz</div>
-                <input type="number" id="plateau1_hz" placeholder="Hz" step="0.01" value="5">
+                <input type="number" id="plateau1_hz" placeholder="Hz" step="0.01" value="2">
                 <div class="input-label">s</div>
                 <input type="number" id="plateau1_time" placeholder="Seconds" step="0.1" value="5">
             </div>
@@ -466,6 +466,9 @@
             }
             currentSegmentIndex = 0;
             timelineSegments = [];
+            
+            // Stop GLSL blinking
+            stopGLSLBlinking();
         }
         
         function updateTimelineStatus() {
@@ -485,6 +488,7 @@
             if (!currentSegment) {
                 // Timeline finished
                 updateStatus('Timeline Complete');
+                stopGLSLBlinking();
                 stopTimelineTracking();
                 return;
             }
@@ -493,16 +497,23 @@
             const timeLeft = currentSegment.duration - timeInSegment;
             
             let statusText;
+            let currentHz;
             if (currentSegment.type === 'plateau') {
-                statusText = `Plateau ${currentSegment.phase}: ${currentSegment.hz.toFixed(1)}Hz | ${timeLeft.toFixed(1)}s left`;
+                currentHz = currentSegment.hz;
+                statusText = `Plateau ${currentSegment.phase}: ${currentHz.toFixed(1)}Hz | ${timeLeft.toFixed(1)}s left`;
             } else {
                 // Calculate current Hz for transition
                 const progress = timeInSegment / currentSegment.duration;
-                const currentHz = currentSegment.startHz + (currentSegment.endHz - currentSegment.startHz) * progress;
+                currentHz = currentSegment.startHz + (currentSegment.endHz - currentSegment.startHz) * progress;
                 statusText = `Transition ${currentSegment.phase}: ${currentHz.toFixed(1)}Hz | ${timeLeft.toFixed(1)}s left`;
             }
             
             updateStatus(statusText);
+            
+            // Update GLSL blinking only if Hz changed
+            if (currentHz !== glCurrentHz) {
+                startGLSLBlinking(currentHz);
+            }
         }
 
         // WebGL/GLSL Low-Latency Visual System
@@ -531,7 +542,7 @@
             
             void main() {
                 if (u_hz <= 0.0) {
-                    gl_FragColor = vec4(0.4, 0.4, 0.4, 1.0); // Gray when stopped
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // White when stopped
                     return;
                 }
                 
@@ -542,7 +553,7 @@
                 if (timeInCycle < u_holdTime) {
                     gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red flash
                 } else {
-                    gl_FragColor = vec4(0.4, 0.4, 0.4, 1.0); // Gray background
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // White background
                 }
             }
         `;
