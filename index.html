@@ -195,6 +195,9 @@
             <div id="hzFlash" class="hz-flash">
                 Hz Flash
             </div>
+            <canvas id="glslBlinker" width="60" height="60" style="border: 2px solid #333; border-radius: 50%;">
+                GLSL not supported
+            </canvas>
         </div>
     </div>
     
@@ -377,6 +380,7 @@
                 const startHz = config.plateau1.hz || 5;
                 updateStatus(`Playing ${startHz}Hz`);
                 startBlinking(startHz);
+                startGLSLBlinking(startHz);
                 
             } else {
                 // Stop playing  
@@ -387,6 +391,7 @@
                 
                 // Stop blinking
                 stopBlinking();
+                stopGLSLBlinking();
                 updateStatus('Timeline Ready');
             }
         }
@@ -429,7 +434,160 @@
             currentHz = 0;
             console.log('Blinking stopped');
         }
+
+        // WebGL/GLSL Low-Latency Visual System
+        let gl;
+        let glProgram;
+        let glCanvas;
+        let glAnimationId;
+        let glStartTime = 0;
+        let glCurrentHz = 0;
+        let glHoldTime = 0.05; // Configurable hold time in seconds (50ms default)
         
+        // GLSL Vertex Shader - simple fullscreen quad
+        const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+        
+        // GLSL Fragment Shader - Hz-based blinking
+        const fragmentShaderSource = `
+            precision mediump float;
+            uniform float u_time;
+            uniform float u_hz;
+            uniform float u_holdTime;
+            
+            void main() {
+                if (u_hz <= 0.0) {
+                    gl_FragColor = vec4(0.4, 0.4, 0.4, 1.0); // Gray when stopped
+                    return;
+                }
+                
+                float cycle = 1.0 / u_hz;
+                float timeInCycle = mod(u_time, cycle);
+                
+                // Simple on/off based on hold time
+                if (timeInCycle < u_holdTime) {
+                    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red flash
+                } else {
+                    gl_FragColor = vec4(0.4, 0.4, 0.4, 1.0); // Gray background
+                }
+            }
+        `;
+        
+        function initWebGL() {
+            glCanvas = document.getElementById('glslBlinker');
+            gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
+            
+            if (!gl) {
+                console.warn('WebGL not supported, falling back to DOM blinking');
+                return false;
+            }
+            
+            // Create shaders
+            const vertexShader = createShader(gl.VERTEX_SHADER, vertexShaderSource);
+            const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+            
+            // Create program
+            glProgram = gl.createProgram();
+            gl.attachShader(glProgram, vertexShader);
+            gl.attachShader(glProgram, fragmentShader);
+            gl.linkProgram(glProgram);
+            
+            if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) {
+                console.error('WebGL program link failed:', gl.getProgramInfoLog(glProgram));
+                return false;
+            }
+            
+            // Set up geometry (fullscreen quad)
+            const positions = new Float32Array([
+                -1, -1,
+                 1, -1,
+                -1,  1,
+                 1,  1
+            ]);
+            
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+            
+            const a_position = gl.getAttribLocation(glProgram, 'a_position');
+            gl.enableVertexAttribArray(a_position);
+            gl.vertexAttribPointer(a_position, 2, gl.FLOAT, false, 0, 0);
+            
+            gl.useProgram(glProgram);
+            
+            console.log('WebGL initialized successfully');
+            return true;
+        }
+        
+        function createShader(type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            
+            return shader;
+        }
+        
+        function startGLSLBlinking(hz) {
+            if (!gl) return;
+            
+            glCurrentHz = hz;
+            glStartTime = performance.now() / 1000.0;
+            
+            if (!glAnimationId) {
+                renderGLSL();
+            }
+        }
+        
+        function stopGLSLBlinking() {
+            glCurrentHz = 0;
+            if (glAnimationId) {
+                cancelAnimationFrame(glAnimationId);
+                glAnimationId = null;
+            }
+            
+            // Render final gray state
+            if (gl) {
+                renderGLSLFrame(0, 0);
+            }
+        }
+        
+        function renderGLSL() {
+            const currentTime = performance.now() / 1000.0;
+            const elapsedTime = currentTime - glStartTime;
+            
+            renderGLSLFrame(elapsedTime, glCurrentHz);
+            
+            if (glCurrentHz > 0) {
+                glAnimationId = requestAnimationFrame(renderGLSL);
+            }
+        }
+        
+        function renderGLSLFrame(time, hz) {
+            if (!gl || !glProgram) return;
+            
+            gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+            
+            const u_time = gl.getUniformLocation(glProgram, 'u_time');
+            const u_hz = gl.getUniformLocation(glProgram, 'u_hz');
+            const u_holdTime = gl.getUniformLocation(glProgram, 'u_holdTime');
+            
+            gl.uniform1f(u_time, time);
+            gl.uniform1f(u_hz, hz);
+            gl.uniform1f(u_holdTime, glHoldTime);
+            
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+
         function updateStatus(message) {
             if (statusDisplay) {
                 statusDisplay.textContent = message;
@@ -441,6 +599,14 @@
             // Get visual elements
             statusDisplay = document.getElementById('timelineStatus');
             flashElement = document.getElementById('hzFlash');
+            
+            // Initialize WebGL for low-latency blinking
+            const webglSupported = initWebGL();
+            if (webglSupported) {
+                console.log('GLSL blinking system ready');
+            } else {
+                console.log('Falling back to DOM blinking only');
+            }
             
             // Add event listeners to all inputs for real-time logging
             const inputs = document.querySelectorAll('input');
@@ -456,6 +622,7 @@
                             console.log(`Hz changed to ${newHz}, updating blink rate`);
                             updateStatus(`Playing ${newHz}Hz`);
                             startBlinking(newHz);
+                            startGLSLBlinking(newHz);
                         }
                     }
                 });
