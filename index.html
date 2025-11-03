@@ -347,8 +347,12 @@
                 const config = logJourneyMap();
                 console.log('🎵 Started playing with configuration:', config);
                 
-                // Start real timeline system
+                // Initialize and start JMTimeline system
                 updateStatus(`Starting Timeline...`);
+                await initializeTimeline();
+                timeline.start();
+                
+                // Start status polling (separate from pulse events)
                 startTimelineTracking();
                 
                 // Initialize GLSL blinking system (32n pulse events will trigger blinks)
@@ -363,7 +367,12 @@
                 btn.classList.remove('playing');
                 console.log('⏹ Stopped playing');
                 
-                // Stop real timeline system
+                // Stop JMTimeline system
+                if (timeline) {
+                    timeline.stop();
+                }
+                
+                // Stop status polling
                 stopTimelineTracking();
                 
                 // Stop GLSL blinking system
