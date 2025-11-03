@@ -1,0 +1,1003 @@
+/* ===== COL1DEBUG WIDGET STYLES ===== */
+/* UI Debug Panel: boundary visualization and element debugging */
+/* 🔧 CSS-LEVEL HIDING PROTOCOLS - Following style guide pattern */
+
+/* Individual element control via data attributes:
+   - data-debug-transport="hidden|visible"    .debug-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+/* === Scripts Multi-Select === */
+.scripts-select {
+  width: 100%;
+  background: rgba(20,20,20,0.9);
+  color: #ffffff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem;
+  padding: 0.2rem;
+  outline: none;
+}
+
+.scripts-select option {
+  background: rgba(20,20,20,0.95);
+  color: #ffffff;
+  padding: 0.1rem 0.3rem;
+}
+
+.scripts-select option:hover {
+  background: rgba(50,50,50,0.9);
+}
+
+.scripts-select option:checked {
+  background: rgba(0,120,200,0.8);
+}
+
+/* === Targets Input === */
+.targets-input {
+  width: 100%;
+  background: rgba(20,20,20,0.9);
+  color: #ffffff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem;
+  padding: 0.2rem 0.3rem;
+  outline: none;
+  overflow: hidden;
+  height: 1.3rem;
+  line-height: 1;
+}
+
+.targets-input::placeholder {
+  color: #888;
+  opacity: 0.8;
+}
+
+/* Individual element hiding rules */
+
+/* Individual element hiding rules */
+[data-debug-transport="hidden"] #transport-panel-container {
+  display: none !important;
+}
+
+[data-debug-panel-bg="hidden"] .control-panel-binaural {
+  display: none !important;
+}
+
+[data-debug-journey-header="hidden"] .journey-title {
+  display: none !important;
+}
+
+[data-debug-frequency-map="hidden"] .journey-sequence {
+  display: none !important;
+}
+
+[data-debug-jm-presets="hidden"] .jm-presetter {
+  display: none !important;
+}
+
+[data-debug-binaural-controls="hidden"] .binaural-top-row {
+  display: none !important;
+}
+
+[data-debug-binaural-presets="hidden"] .binaural-bottom-row {
+  display: none !important;
+}
+
+/* Boundary visualization - hierarchical levels */
+[data-debug-boundaries="visible"] .control-panel {
+  outline: 3px solid #ffff00 !important;
+}
+
+/* Apply debug boundaries only to Col1 and Col3 - exclude Col2 for clean proportions */
+[data-debug-boundaries="visible"] .column:first-child .phone-emu,
+[data-debug-boundaries="visible"] .column:last-child .phone-emu {
+  outline: 2px solid #00ff00 !important;
+}
+
+/* Remove phone-emu outline on col1 and col3 when they contain debug panels */
+[data-debug-boundaries="visible"] .column:first-child .phone-emu {
+  outline: none !important; /* Col1 - no cyan when debug panel present */
+}
+
+[data-debug-boundaries="visible"] .column:last-child .phone-emu {
+  outline: none !important; /* Col3 - no cyan when debug panel present */
+}
+
+/* Remove phone-emu outline when debug panels are present */
+[data-debug-boundaries="visible"] .column:first-child .phone-emu:has(.floatdebug-panel),
+[data-debug-boundaries="visible"] .column:first-child .phone-emu:has(.control-panel-col1debug),
+[data-debug-boundaries="visible"] .column:last-child .phone-emu:has(.col3debugger-widget) {
+  outline: none !important;
+}
+
+[data-debug-boundaries="visible"] .column {
+  outline: 2px solid #ff0000 !important;
+  outline-offset: -1px !important; /* Consistent with floatdebug.css */
+}
+
+[data-debug-boundaries="visible"] [id*="container"] {
+  outline: 2px solid #00ffff !important;
+  outline-offset: -1px !important; /* Consistent with floatdebug.css */
+}
+
+/* Debug panel boundary styling - container level only */
+[data-debug-boundaries="visible"] .floatdebug-panel.docked-column1 {
+  outline: 2px solid #ff8800 !important; /* Docked mode - orange */
+}
+
+[data-debug-boundaries="visible"] .floatdebug-panel:not(.docked-column1) {
+  outline: 3px solid #00ff88 !important; /* Floating mode - green */
+}
+
+/* Main containers within the debug panel */
+[data-debug-boundaries="visible"] .floatdebug-widget {
+  outline: 1px solid #00ffff !important; /* Cyan for widget container */
+}
+
+[data-debug-boundaries="visible"] .floatdebug-header-row {
+  outline: 1px solid #ffff00 !important; /* Yellow for header row */
+}
+
+[data-debug-boundaries="visible"] .floatdebug-controls-area {
+  outline: 1px solid #ff00ff !important; /* Magenta for controls area */
+}
+
+[data-debug-boundaries="visible"] .debug-section {
+  outline: 1px solid #88ff88 !important; /* Light green for sections */
+}
+
+/* Legacy selectors for backward compatibility */
+[data-debug-boundaries="visible"] .control-panel-col1debug:not(.tv-menu) {
+  outline: 2px solid #ff8800 !important; /* Docked mode - orange */
+}
+
+[data-debug-boundaries="visible"] .control-panel-col1debug.tv-menu {
+  outline: 3px solid #00ff88 !important; /* Floating mode - green */
+}
+
+.control-panel-col1debug {
+  /* When docked to column 1, inherits positioning from existing system */
+  position: relative;
+}
+
+/* Debug panels should fill phone-emu completely - no margins */
+.phone-emu .floatdebug-panel.docked-column1 {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  /* Inherit phone-emu border-radius to prevent clipping over rounded corners */
+  border-radius: inherit !important;
+}
+
+.phone-emu .control-panel-col1debug {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  /* Inherit phone-emu border-radius to prevent clipping over rounded corners */
+  border-radius: inherit !important;
+}
+
+/* 🔧 DEBUG PANEL MODE - Style Guide Compliant Single Override */
+/* Base .phone-emu provides standard padding, modifier removes it for debug panels */
+.phone-emu.phone-emu-debug {
+  padding: 0; /* Clean override - no !important cruft */
+}
+
+/* Floating mode (legacy compatibility) */
+.control-panel-col1debug:not(.docked-column1) {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 9999;
+  background: rgba(0,0,0,0.95);
+  color: #ffffff;
+  border: 2px solid #666;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  min-width: 200px;
+  max-width: 280px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  backdrop-filter: blur(12px);
+  transition: all 0.3s ease;
+  padding: 0.25rem;
+}
+
+/* Docked mode (enhanced panel system) */
+.control-panel-col1debug.docked-column1 {
+  position: relative;
+  width: 100%;
+  height: auto;
+  max-width: none;
+  border-radius: 1.125rem; /* Match phone-emu border radius */
+  box-shadow: inset 0 0 20px rgba(100,100,100,0.1), 0 0 10px rgba(0, 255, 136, 0.11);
+  backdrop-filter: none;
+  background: rgba(0,0,0,0.95);
+  border: 2px solid #00FF88;
+  z-index: 1000;
+  /* Respect phone-emu padding */
+  padding: 1.5% 2%;
+  box-sizing: border-box;
+  font-family: 'Courier New', monospace;
+  color: #ffffff;
+}
+
+.col1debug-widget {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 0.65rem;
+  color: #ffffff;
+}
+
+/* === Header Row === */
+.col1debug-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.15rem 0.3rem;
+  background: rgba(0,0,0,0.1);
+  border-bottom: 1px solid #333;
+  min-height: 1.5rem;
+}
+
+.col1debug-title {
+  font-size: 0.7rem;
+  font-weight: 400;
+  margin: 0;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.col1debug-controls--distributed {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.col1debug-controls--distributed .action-btn {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.3rem;
+  min-width: auto;
+  height: auto;
+  line-height: 1;
+  flex: none;
+}
+
+.col1debug-controls--distributed .popout-toggle-btn {
+  background: rgba(100,100,100,0.1);
+  border: 1px solid #ffffff !important;
+  color: #ffffff;
+  padding: 0.22rem 0.2rem !important;
+  margin-bottom: .3rem !important;
+  font-size: 0.6rem !important;
+  height: 1.25rem !important;
+  min-width: 2.25rem !important;
+}
+
+.popout-toggle-btn:hover {
+  background: rgba(100,100,100,0.2);
+  box-shadow: 0 0 8px rgba(100,100,100,0.3);
+}
+
+/* Debug run button basic styling */
+#debug-run {
+  background: rgba(60,60,60,0.8);
+  border: 1px solid #888;
+  color: #fff;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+.col1debug-controls--distributed .close-btn {
+  background: rgba(255,107,107,0.1);
+  border: 1px solid #ffffff !important;
+  color: #ffffff;
+  padding: 0.22rem 0.2rem !important;
+  margin-bottom: .3rem !important;
+  font-size: 0.6rem !important;
+  height: 1.25rem !important;
+  min-width: 2.25rem !important;
+}
+
+.close-btn:hover {
+  background: rgba(255,107,107,0.2);
+  box-shadow: 0 0 8px rgba(255,107,107,0.3);
+}
+
+/* === Controls Area === */
+.col1debug-bottom-row {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.25rem;
+}
+
+.debug-controls-area {
+  height: 100%;
+}
+
+/* === Debug Sections === */
+.debug-section {
+  margin-bottom: 0.25rem;
+}
+
+.debug-separator {
+  margin-bottom: 0.2rem; /* Reduced from 0.25rem */
+  padding-top: 0.2rem; /* Reduced from 0.2rem */
+  border-top: 1px solid #333;
+}
+
+.debug-section-title {
+  font-size: 0.6rem;
+  color: #888;
+  text-transform: uppercase;
+  margin-bottom: 0.15rem; /* Reduced from 0.3rem */
+  letter-spacing: 0.5px;
+}
+
+.debug-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem; /* Reduced from 0.3rem */
+}
+
+/* Inline checkbox group for Col2/All radio buttons */
+.debug-checkbox-inline {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  margin: 0.2rem 0;
+}
+
+/* === Scripts Multi-Select === */
+.scripts-select {
+  width: 100%;
+  background: rgba(20,20,20,0.9);
+  color: #ffffff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem;
+  padding: 0.2rem;
+  outline: none;
+}
+
+.scripts-select option {
+  background: rgba(20,20,20,0.95);
+  color: #ffffff;
+  padding: 0.1rem 0.3rem;
+}
+
+.scripts-select option:hover {
+  background: rgba(50,50,50,0.9);
+}
+
+.scripts-select option:checked {
+  background: rgba(0,120,200,0.8);
+}
+
+/* === Targets Input === */
+.targets-input {
+  width: 95%;
+  background: rgba(20,20,20,0.9);
+  color: #ffffff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem;
+  padding: 0.2rem 0.3rem;
+  margin-bottom: 0.25rem;
+  outline: none;
+  overflow: hidden;
+  height: 1.3rem;
+  line-height: 1;
+}
+
+.targets-input::placeholder {
+  color: #888;
+  opacity: 0.8;
+}
+
+.debug-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.0rem 0;
+  transition: background-color 0.2s ease;
+}
+
+.debug-checkbox-label:hover {
+  background: rgba(0,255,136,0.05);
+  border-radius: 3px;
+}
+
+.debug-checkbox-label input[type="checkbox"] {
+  margin: 0;
+  accent-color: #00ff88;
+}
+
+.debug-element-indicator {
+  font-size: 0.8rem;
+  width: 0.8rem;
+  text-align: center;
+}
+
+.debug-element-name {
+  font-size: 0.6rem;
+  color: #ccc;
+  font-family: 'Courier New', monospace;
+}
+
+/* === Element Color Indicators === */
+.transport-color { color: #ff6b6b; }
+.binaural-color { color: #4ecdc4; }
+.journey-color { color: #45b7d1; }
+.frequency-color { color: #f9ca24; }
+.presetter-color { color: #f0932b; }
+.controls-color { color: #eb4d4b; }
+.presets-color { color: #6c5ce7; }
+
+/* === Responsive Adjustments === */
+@media (max-height: 600px) {
+  .control-panel-col1debug {
+    font-size: 0.6rem;
+  }
+  
+  .debug-controls-area {
+    font-size: 0.55rem;
+  }
+  
+  .debug-checkbox-group {
+    gap: 0.2rem;
+  }
+}
+
+/* === Integration with existing debug system === */
+.control-panel-col1debug .debug-label {
+  /* Ensure compatibility with existing debug labels */
+  font-family: 'Courier New', monospace;
+  font-size: 0.6rem;
+  color: #00ff88;
+}
+
+/* === Animation states === */
+.control-panel-col1debug.initializing {
+  opacity: 0.7;
+}
+
+.control-panel-col1debug.ready {
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+/* ===== FLOATING MODE EXTENSION - Single Inheritance ===== */
+/* Following style guide: one override per styling pattern */
+
+/* Floating TV Menu Mode - extends base .control-panel-col1debug */
+.control-panel-col1debug.tv-menu {
+  /* Override base positioning for floating */
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 9999;
+  width: 280px; /* Fixed width for floating */
+  height: auto; /* Auto height for floating */
+  max-width: 320px;
+  max-height: 80vh;
+  
+  /* TV menu specific styling */
+  background: rgba(0,0,0,0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid #00ff88;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,255,136,0.3);
+  
+  /* Compact TV menu typography */
+  font-size: 10px;
+  overflow-y: auto;
+}
+
+/* TV Menu Header Row - more compact */
+.control-panel-col1debug.tv-menu .col1debug-top-row {
+  padding: 0.2rem 0.4rem;
+  background: rgba(0,255,136,0.1);
+  border-bottom: 1px solid #00ff88;
+  min-height: 1.2rem;
+}
+
+.control-panel-col1debug.tv-menu .col1debug-title {
+  font-size: 0.6rem;
+  color: #00ff88;
+  font-weight: bold;
+}
+
+/* TV Menu Controls - smaller buttons */
+.control-panel-col1debug.tv-menu .col1debug-controls--distributed .action-btn {
+  font-size: 0.55rem;
+  padding: 0.1rem 0.2rem;
+  border: 1px solid #00ff88;
+  background: transparent;
+  color: #00ff88;
+}
+
+.control-panel-col1debug.tv-menu .col1debug-controls--distributed .action-btn:hover {
+  background: #00ff88;
+  color: #000;
+}
+
+/* TV Menu Widget Content - compact layout */
+.control-panel-col1debug.tv-menu .col1debug-widget {
+  font-size: 0.55rem;
+  padding: 0.3rem;
+}
+
+/* TV Menu Debug Sections - tighter spacing */
+.control-panel-col1debug.tv-menu .debug-section {
+  margin-bottom: 0.4rem;
+  padding: 0.2rem;
+  background: rgba(0,255,136,0.05);
+  border: 1px solid rgba(0,255,136,0.2);
+  border-radius: 4px;
+}
+
+.control-panel-col1debug.tv-menu .debug-section-title {
+  font-size: 0.5rem;
+  color: #00ff88;
+  font-weight: bold;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* TV Menu Checkboxes - compact styling */
+.control-panel-col1debug.tv-menu .debug-checkbox-group {
+  gap: 0.15rem;
+  flex-direction: column;
+}
+
+.control-panel-col1debug.tv-menu .debug-checkbox-label {
+  font-size: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.control-panel-col1debug.tv-menu .debug-checkbox-label:hover {
+  background: rgba(0,255,136,0.1);
+  border-radius: 2px;
+}
+
+.control-panel-col1debug.tv-menu .debug-checkbox-label input[type="checkbox"] {
+  width: 10px;
+  height: 10px;
+  accent-color: #00ff88;
+  flex-shrink: 0;
+}
+
+/* TV Menu Element Indicators - tiny colored dots */
+.control-panel-col1debug.tv-menu .debug-element-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-left: 0.2rem;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+
+/* === Enhanced Scripts Multi-Select Scrolling === */
+.scripts-select {
+  overflow-y: auto !important;
+  max-height: 12rem !important;
+}
+/* ========================================= */
+/* FLOATDEBUG STYLES (MERGED FROM floatdebug.css) */
+/* ========================================= */
+
+/* ==============================================
+   🔧 CSS-LEVEL HIDING PROTOCOLS - FLOATDEBUG WIDGET  
+   ==============================================
+   Individual element control via data attributes:
+   
+   - data-debug-transport="hidden|visible"           -> #transport-panel-container
+   - data-debug-panel-bg="hidden|visible"            -> .control-panel-binaural
+   - data-debug-journey-header="hidden|visible"      -> .journey-title
+   - data-debug-frequency-map="hidden|visible"       -> .journey-sequence
+   - data-debug-jm-presets="hidden|visible"          -> .jm-presetter
+   - data-debug-binaural-controls="hidden|visible"   -> .binaural-top-row
+   - data-debug-binaural-presets="hidden|visible"    -> .binaural-bottom-row
+   - data-debug-boundaries="visible|hidden"          -> Toggle boundary visualization
+   
+   Usage: Debug controller toggles individual data attributes on body
+   ============================================== */
+
+/* Individual element hiding rules */
+[data-debug-transport="hidden"] #transport-panel-container {
+  display: none !important;
+}
+
+[data-debug-panel-bg="hidden"] .control-panel-binaural {
+  display: none !important;
+}
+
+[data-debug-journey-header="hidden"] .journey-title {
+  display: none !important;
+}
+
+[data-debug-frequency-map="hidden"] .journey-sequence {
+  display: none !important;
+}
+
+[data-debug-jm-presets="hidden"] .jm-presetter {
+  display: none !important;
+}
+
+[data-debug-binaural-controls="hidden"] .binaural-top-row {
+  display: none !important;
+}
+
+[data-debug-binaural-presets="hidden"] .binaural-bottom-row {
+  display: none !important;
+}
+
+/* Boundary visualization toggle - HIERARCHICAL LEVELS */
+
+/* TOP LEVEL: Control panels (always visible when boundaries on) */
+[data-debug-boundaries="visible"] .control-panel {
+  outline: 3px solid #ffff00 !important;
+  outline-offset: -2px !important;
+}
+
+/* EXCLUDE floating debug panel from boundaries */
+[data-debug-boundaries="visible"] .floatdebug-panel:not(.docked-column1) {
+  outline: none !important;
+}
+
+/* INCLUDE docked debug panel (popin mode) in boundaries */
+[data-debug-boundaries="visible"] .floatdebug-panel.docked-column1 {
+  outline: 2px solid #ff88ff !important;
+  outline-offset: -1px !important;
+}
+
+/* MID LEVEL: Containers */
+[data-debug-boundaries="visible"] .phone-emu {
+  outline: 2px solid #00ff00 !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"] .column {
+  outline: 2px solid #ff0000 !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"] [id*="container"] {
+  outline: 2px solid #00ffff !important;
+  outline-offset: -1px !important;
+}
+
+/* LOWEST LEVEL: Individual debug visibility elements (controlled by their specific visibility hooks) */
+[data-debug-boundaries="visible"][data-debug-transport="visible"] #transport-panel-container {
+  outline: 1px solid #ff8800 !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"][data-debug-panel-bg="visible"] .control-panel-binaural {
+  outline: 1px solid #8800ff !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"][data-debug-journey-header="visible"] .journey-title {
+  outline: 1px solid #00ff88 !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"][data-debug-frequency-map="visible"] .journey-sequence {
+  outline: 1px solid #ff0088 !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"][data-debug-jm-presets="visible"] .jm-presetter {
+  outline: 1px solid #88ff00 !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"][data-debug-binaural-controls="visible"] .binaural-top-row {
+  outline: 1px solid #0088ff !important;
+  outline-offset: -1px !important;
+}
+
+[data-debug-boundaries="visible"][data-debug-binaural-presets="visible"] .binaural-bottom-row {
+  outline: 1px solid #ff8800 !important;
+  outline-offset: -1px !important;
+}
+
+/* END HIDING PROTOCOLS */
+
+/* ==============================================
+   🎯 FLOATDEBUG WIDGET STYLES
+   ============================================== */
+
+/* Base float panel class for floating debug tools */
+.float-panel {
+  font-family: 'Courier New', monospace;
+  background: rgba(0,0,0,0.92);
+  color: #00ff00;
+  border: 1px solid #444;
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+/* Base panel - starts with TV menu size to prevent resize flash */
+.floatdebug-panel {
+  /* Default to small floating size - no flash when .tv-menu is added */
+  font-size: 0.4375rem;
+  min-width: 110px;
+  max-width: 120px;
+  width: 120px;
+  /* REMOVED: max-height constraint for dynamic sizing */
+  /* max-height: 280px; */
+  height: auto; /* Allow dynamic height based on content */
+  
+  /* Default floating position */
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 9999;
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  /* CHANGED: overflow visible to allow expansion */
+  overflow: visible;
+}
+
+/* Docked to column 1 mode - override with larger size */
+.floatdebug-panel.docked-column1 {
+  /* Override floating size for docked mode */
+  font-size: 0.6875rem;
+  width: 100%;
+  height: 100%;
+  min-width: unset;
+  max-width: none;
+  max-height: none;
+  
+  position: static; /* Let it flow naturally in the container */
+  border-radius: 1.125rem; /* Match phone-emu border radius */
+  box-shadow: inset 0 0 20px rgba(0,255,136,0.1), 0 0 10px rgba(0, 255, 136, 0.11);
+  backdrop-filter: none;
+  background: rgba(0,0,0,0.95);
+  border: 2px solid #00ff88;
+  z-index: 1000;
+  /* Use margin instead of padding to respect container bounds */
+  margin: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Prevent any overflow */
+}
+
+/* FLOATING TV MENU MODE - Compact subclass */
+.floatdebug-panel.tv-menu {
+  /* Override base panel for TV menu style - much smaller */
+  font-size: 0.4375rem;
+  min-width: 110px;
+  max-width: 120px;
+  width: 120px;
+  /* REMOVED: max-height constraint for dynamic sizing */
+  /* max-height: 280px; */
+  height: auto; /* Allow dynamic height based on content */
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  /* CHANGED: overflow visible to allow expansion */
+  overflow: visible;
+}
+
+.floatdebug-widget {
+  padding: 8px;
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* TV Menu mode - compact widget styling */
+.floatdebug-panel.tv-menu .floatdebug-widget {
+  padding: 5px;
+}
+
+/* Docked mode - proper widget padding that doesn't cause overflow */
+.floatdebug-panel.docked-column1 .floatdebug-widget {
+  padding: 1rem;
+  height: 100%;
+  overflow: hidden; /* Prevent overflow */
+  flex: 1;
+}
+
+/* Header row with controls */
+.floatdebug-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #444;
+}
+
+/* TV Menu mode - compact header */
+.floatdebug-panel.tv-menu .floatdebug-header-row {
+  margin-bottom: 6px;
+  padding-bottom: 3px;
+}
+
+.floatdebug-title {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  flex: 1;
+  text-align: center;
+}
+
+/* TV Menu mode - smaller title */
+.floatdebug-panel.tv-menu .floatdebug-title {
+  font-size: 9px;
+  letter-spacing: 0.3px;
+}
+
+/* Dock toggle button */
+#floatdebug-dock-toggle {
+  background: none;
+  border: none;
+  color: #00ff88;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+#floatdebug-dock-toggle:hover {
+  color: #ffffff;
+  background: rgba(0,255,136,0.2);
+  transform: scale(1.1);
+}
+
+/* Docked mode dock button styling */
+.floatdebug-panel.docked-column1 #floatdebug-dock-toggle {
+  color: #ff6b6b;
+}
+
+.floatdebug-panel.docked-column1 #floatdebug-dock-toggle:hover {
+  color: #ffffff;
+  background: rgba(255,107,107,0.2);
+}
+
+/* Close button */
+#floatdebug-close {
+  background: none;
+  border: none;
+  color: #ff6b6b;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+  transition: color 0.2s ease;
+}
+
+#floatdebug-close:hover {
+  color: #ff4444;
+  background: rgba(255,255,255,0.1);
+}
+
+/* Controls area */
+.floatdebug-controls-area {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0; /* Allow flexbox to shrink */
+}
+
+/* TV Menu mode - compact controls area */
+.floatdebug-panel.tv-menu .floatdebug-controls-area {
+  overflow: hidden; /* No scrolling in TV menu mode */
+}
+
+/* Docked mode - ensure controls area can scroll if needed but respects container */
+.floatdebug-panel.docked-column1 .floatdebug-controls-area {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Debug sections */
+.debug-section {
+  margin-bottom: 4px; /* Reduced from 8px */
+}
+
+/* TV Menu mode - tighter sections */
+.floatdebug-panel.tv-menu .debug-section {
+  margin-bottom: 3px; /* Reduced from 5px */
+}
+
+.debug-section-title {
+  font-size: 10px;
+  color: #aaaaaa;
+  margin-bottom: 3px; /* Reduced from 6px */
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* TV Menu mode - smaller section titles */
+.floatdebug-panel.tv-menu .debug-section-title {
+  font-size: 8px;
+  margin-bottom: 2px; /* Reduced from 3px */
+  letter-spacing: 0.2px;
+}
+
+.debug-checkbox-group {
+  background: rgba(255,255,255,0.04);
+  padding: 6px;
+  border-radius: 4px;
+  margin-bottom: 4px; /* Reduced from 8px */
+}
+
+/* TV Menu mode - compact checkbox groups */
+.floatdebug-panel.tv-menu .debug-checkbox-group {
+  padding: 4px;
+  border-radius: 3px;
+  margin-bottom: 3px; /* Reduced from 5px */
+}
+
+/* Conflicting rules removed - using consolidated flex-based layout above */
+
+.debug-label-text {
+  color: #cccccc;
+}
+
+.debug-element-indicator {
+  font-size: 12px;
+  margin-right: 4px;
+  /* Color will be set via JavaScript based on data-color attribute */
+}
+
+/* TV Menu mode - smaller indicators */
+.floatdebug-panel.tv-menu .debug-element-indicator {
+  font-size: 10px;
+  margin-right: 3px;
+}
+
+.debug-element-name {
+  font-family: 'Courier New', monospace;
+  color: #88ddff;
+}
+
+/* Reset button */
+#floatdebug-reset {
+  background: #333333;
+  color: #cccccc;
+  border: 1px solid #555555;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 9px;
+  font-family: monospace;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+#floatdebug-reset:hover {
+  background: #444444;
+  color: #ffffff;
+  border-color: #666666;
+}

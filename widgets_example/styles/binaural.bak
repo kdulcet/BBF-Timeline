@@ -1,0 +1,587 @@
+/* Duplicate preset UI rules removed — canonical rules live in styles/ui_elements.css
+   Backup of the original file saved as widgets/styles/binaural.css.bak
+   Keep binaural-specific layout rules here only.
+*/
+
+/* NUCLEAR OPTION: Complete container isolation from GLSL */
+.control-panel-binaural {
+  position: relative;
+  z-index: 9999; /* Absolute highest layer */
+  transform: translate3d(0, 0, 0); /* Force own GPU context */
+  isolation: isolate; /* Complete isolation */
+  contain: strict; /* Maximum containment */
+  mix-blend-mode: normal; /* Force separate blend layer */
+  filter: opacity(1); /* Force filter layer */
+  overflow: visible; /* Allow shadows to show */
+}
+
+/* NUCLEAR GPU ISOLATION: Force all binaural elements onto separate compositing layers */
+body #control-panel-binaural.ui-base .binaural-widget .button_selector.button_selector,
+body #control-panel-binaural.ui-base .binaural-widget .button_selector__nav.button_selector__nav,
+body #control-panel-binaural.ui-base .binaural-widget .button_selector__display.button_selector__display,
+body #control-panel-binaural.ui-base .binaural-widget .ui-btn.ui-btn,
+body #control-panel-binaural.ui-base .binaural-widget .fader-handle.fader-handle {
+  /* Shadow applied by generic control-panel rule in ui_elements.css */
+  position: relative; /* Create stacking context */
+  z-index: 1000; /* Force above all GPU layers */
+  transform: translate3d(0, 0, 0); /* Stronger GPU acceleration */
+  transform-style: preserve-3d; /* Preserve compositing */
+  will-change: transform, box-shadow; /* Optimize shadow + transform */
+  isolation: isolate;       /* Prevent GLSL interference */
+  backdrop-filter: blur(0); /* Force separate compositing layer */
+  contain: layout style paint; /* Full containment from GPU context */
+  opacity: 1.0; /* Force full opacity */
+  background-color: rgba(255, 255, 255, 1.0); /* Ensure opaque background */
+}
+
+/* EXPLICITLY NO SHADOWS: Layout containers should not have shadows */
+.control-panel-binaural .binaural-widget .binaural-faders-row {
+  box-shadow: none !important; /* Faders row is layout only, no shadows */
+}
+
+/* ==============================================
+   🔧 CSS-LEVEL HIDING PROTOCOLS - BINAURAL WIDGET  
+   ==============================================
+   Individual element control via data attributes:
+   
+   - data-debug-panel-bg="hidden|visible"         -> .control-panel (main container)
+   - data-debug-binaural-controls="hidden|visible" -> .binaural-top-row + middle rows
+   - data-debug-binaural-presets="hidden|visible"  -> .control-panel-bottom-row
+   
+   🎯 BINAURAL WIDGET STRUCTURE CODIFIED:
+   =====================================
+   ROW 1 (.binaural-top-row):     Root/Mood selectors = "Binaural Controls"
+   ROW 2+ (future middle rows):   Additional controls = "Binaural Controls" 
+   BOTTOM (.control-panel-bottom-row): Save/Preset/Revert = "Binaural Presets"
+   
+   CONTAINER (.control-panel): White background panel for any widget
+   =====================================
+   
+   Usage: Debug controller toggles individual data attributes on body
+   ============================================== */
+
+/* Individual element hiding rules */
+[data-debug-panel-bg="hidden"] .control-panel-binaural {
+  display: none !important;
+}
+
+[data-debug-binaural-controls="hidden"] .control-panel-top-row {
+  display: none !important;
+}
+
+[data-debug-binaural-presets="hidden"] .control-panel-bottom-row {
+  display: none !important;
+}
+
+/* Default state - controls hidden by default */
+
+
+.binaural-widget .control-panel-top-row {
+  display: none;
+}
+
+.binaural-widget .control-panel-bottom-row {
+  display: none;
+}
+
+/* Show elements when explicitly visible */
+[data-debug-binaural-controls="visible"] .control-panel-top-row {
+  display: flex !important;
+}
+
+[data-debug-binaural-presets="visible"] .control-panel-bottom-row {
+  display: flex !important;
+}
+
+/* GRANULAR CONTROL: Individual control sections */
+[data-debug-visibility="controls-only"] .control-panel-top-row {
+  display: flex; /* Show only control rows */
+}
+
+[data-debug-visibility="controls-only"] .control-panel-bottom-row {
+  display: none; /* Hide preset controls separately */
+}
+
+/* END HIDING PROTOCOLS */
+
+/* Binaural widget inside control-panel-binaural */
+.control-panel-binaural .binaural-widget {
+    padding: 0; /* Padding handled by control-panel-container */
+    position: relative;
+    width: 100%;
+    /* Allow the widget to expand to fill the available space in the control panel */
+    height: 100%;
+    min-height: 8rem; /* Minimum space for two rows */
+    flex: 1; /* Expand to fill parent */
+    /* Remove border/background since control-panel provides the frame */
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    border-radius: 0;
+    margin: 0;
+    display: flex; /* Use flex to arrange rows */
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: flex-start; /* Left-align all children including faders */
+}
+
+.binaural-widget {
+   /* Legacy standalone widget styles - used when not inside generic .control-panel */
+   padding: 0; /* Padding handled by control-panel-container */
+   margin: 0; /* Margin handled by control-panel-container */
+   position: relative;
+   width: 99%; /* slightly inset so the phone-emu padding shows */
+   flex: 1 1 auto;
+   height: auto; /* Let content determine height */
+   min-height: 8rem; /* Minimum space for two rows */
+   /* REMOVED: max-height constraint to allow full expansion in panel container */
+   background-color: #ffffff; /* White background */
+   /* Border, border-radius, and box-shadow inherited from control-panel when used together */
+   border: 0.125rem solid #000; /* Only for standalone usage - overridden by control-panel */
+   border-radius: 0.625rem; /* Only for standalone usage - overridden by control-panel */
+   box-shadow: 0 0.375rem 1.125rem rgba(0,0,0,0.12);
+   /* margin: 0 already set above - removed duplicate */
+   display: flex;
+   flex-direction: column;
+   justify-content: flex-start; /* Keep rows at top, don't distribute */
+   align-items: flex-start; /* Left-align children */
+}
+
+/* keep binaural_selector rule as it's local to this widget */
+.binaural_selector button {
+    display: none;
+}
+
+/* Binaural-specific top row overrides */
+.binaural-widget .control-panel-top-row {
+    justify-content: center; /* Override: center instead of flex-start */
+    gap: -0.00rem; /* Override: tighter gap */
+    font-size: 0.8em;
+    flex: 0 0 auto; /* Don't grow, fixed size */
+    margin: 0 auto .55rem auto; /* Override: center horizontally */
+    order: 0; /* Position at top */
+}
+
+/* All ui-base elements inside binaural top row have reduced height */
+.binaural-widget .control-panel-top-row .ui-base {
+    height: 1.8rem;
+    line-height: 1.8rem;
+}
+
+/* Middle section container - splits content box and faders 50/50 */
+.binaural-middle-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1; /* Take all available space between top and bottom rows */
+    gap: 0.0rem;
+    order: 1; /* Position between top row and bottom row */
+    width: calc(100%); /* Extend beyond parent padding */
+
+}
+
+/* Content box - takes exactly half of middle section */
+.binaural-content-box {
+    width: 100%;
+    flex: 1; /* Take exactly half of available space */
+    padding: 0.25rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 0.375rem;
+    box-shadow: var(--control-panel-shadow) !important;
+    position: relative; /* For absolute positioning of nav buttons */
+}
+
+/* Navigation buttons in content box corners */
+.binaural-content-box .binaural-nav-left {
+    position: absolute;
+    left: 0.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.7em;
+    height: 1.7em;
+    font-size: 0.64em; /* Match the scaled size inside .button_selector (0.8em × 0.8em) */
+}
+
+.binaural-content-box .binaural-nav-right {
+    position: absolute;
+    right: 0.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.7em;
+    height: 1.7em;
+    font-size: 0.64em; /* Match the scaled size inside .button_selector (0.8em × 0.8em) */
+}
+
+/* Content area between navigation buttons */
+.binaural-content-area {
+    flex: 1; /* Take remaining space between nav buttons */
+    height: 100%;
+    border: 0px solid #ccc; /* Temporary border for troubleshooting - remove when content is added */
+    border-radius: 0.25rem;
+    margin: 0 0.5rem; /* Small margin from nav buttons */
+    position: relative; /* For absolute positioning of page number */
+}
+
+/* Page number indicator moved to right corner */
+.binaural-page-number {
+    position: absolute;
+    top: 0.1rem;
+    right: -.45rem;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: bold;
+    padding: 0.0525rem 0.010rem;
+    border-radius: 0.125rem;
+    z-index: 10;
+    width: 1.7em;
+    text-align: center;
+    line-height: 1.2;
+}
+
+/* Page containers */
+.binaural-page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none; /* Hidden by default */
+    padding: 0; /* No padding - grid handles spacing */
+    box-sizing: border-box;
+}
+
+/* Show active page */
+.binaural-page.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Page content styling */
+.binaural-page .page-content {
+    text-align: center;
+    font-size: 1rem;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.octave-label {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: #333;
+    min-width: 1.5rem;
+}
+
+
+
+
+
+/* Binaural-specific bottom row overrides */
+.binaural-widget .control-panel-bottom-row {
+    order: 2; /* Position after middle section in binaural widget flex layout */
+}
+
+.root-selector-container,
+.mood-selector-container,
+.binaural-preset-container {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem; /* Match unified gap */
+}
+
+/* BINAURAL PANEL INHERITANCE - All selectors inherit from control panel */
+.control-panel-binaural .binaural-widget .button_selector {
+    font-size: 0.8em; /* Match bottom row font size */
+    /* Shadow inherited from ui-base */
+}
+
+/* .control-panel-binaural .binaural-widget .ui-btn - Shadow inherited from ui-base */
+
+.control-panel-binaural .binaural-widget .button_selector .button_selector__nav {
+    font-size: 0.9em; /* Match .binaural-presets navigation button size */
+    width: 1.8em; /* Restore correct nav button sizing */
+    height: 1.8em;
+    /* Shadow controlled by centralized system above */
+}
+
+/* Individual width controls for Root and Mood selectors */
+.root-selector-container .button_selector .button_selector__display {
+    font-size: inherit; /* Inherit 0.8em from parent button_selector */
+    min-width: 1.35rem; /* Smaller width for Root selector */
+    max-width: 1.35rem; /* Constrain Root display width */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mood-selector-container .button_selector .button_selector__display {
+    font-size: inherit; /* Inherit 0.8em from parent button_selector */
+    min-width: 3.35rem; /* Larger width for Mood selector */
+    max-width: 3.35rem; /* Constrain Mood display width */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Simplified label styling - match .binaural-presets approach */
+.binaural-widget .control-panel-top-row .root-label,
+.binaural-widget .control-panel-top-row .mood-label {
+    font-size: 0.8em; /* Match parent font size like .binaural-presets */
+    margin-right: -.30rem; /* ← EDIT THIS for right margin control */
+    flex-shrink: 0; /* Prevent labels from shrinking */
+}
+
+/* Top row selectors inherit unified styling */
+.binaural-widget .control-panel-top-row .button_selector {
+    font-size: 0.8em; /* Match .binaural-presets font size */
+    margin: 0; /* Remove margins like .binaural-presets */
+    flex-shrink: 0; /* Prevent shrinking like .binaural-presets */
+    /* Shadow controlled by centralized system above */
+}
+
+/* DISABLED: Sleek divider line between top row (Root/Mood) and bottom row (preset controls) */
+/* .binaural-top-row::after {
+    content: '';
+    position: absolute;
+    bottom: -2rem;              
+    left: 50%;
+    transform: translateX(-50%);
+    width: 75%;
+    height: 0.125rem;                    
+    background-color: #000;
+    opacity: 0.6;                   
+    border-radius: 0.0625rem;             
+} */
+
+/* Ensure binaural preset selector matches global sizing */
+.button_selector--preset {
+    min-height: 1.7em;
+    line-height: 1.7em;
+}
+
+/* Binaural presets container - centered layout */
+.binaural-presets {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem; /* Slightly wider gap than generic 0.5rem */
+    margin: 0 auto;
+}
+
+/* ==============================================
+   🎛️ VOICE VOLUME FADERS
+   ============================================== */
+
+.binaural-faders-row {
+    display: flex;
+    justify-content: center; /* Center the faders within the box */
+    align-items: flex-end;
+    margin-bottom:.5em;
+    padding: 0.8em 1.0em; /* Padding reduced further for proper proportions */
+    gap: 1.0em; /* Gap reduced for better spacing */
+    flex: 1; /* Take exactly half of middle section space */
+    /* Position as left-aligned box above bottom row */
+    width: fit-content; /* Compact box that fits the faders */
+    /* Override ui-base properties that don't work for tall fader container */
+    height: auto; /* Override ui-base fixed height of 2rem */
+    line-height: normal; /* Override ui-base line-height for proper fader spacing */
+    transform: scale(0.9); /* Scale entire div 10% smaller */
+    transform-origin: left bottom; /* Keep alignment consistent */
+}
+
+/* Override parent centering to allow left alignment of faders */
+.control-panel-binaural .binaural-widget {
+    align-items: flex-start; /* Override align-items: center to allow left alignment */
+}
+
+/* Higher specificity to override parent flex container behavior */
+.control-panel-binaural .binaural-widget .binaural-faders-row {
+    align-self: flex-start; /* Left align within flex parent */
+    margin-left: 0; /* Force left alignment, override any centering */
+    margin-right: auto; /* Allow expansion to right */
+    margin-top: auto; /* Push faders to stack directly above bottom row */
+    margin-bottom: 0.5em; /* Small gap above the preset controls */
+}
+
+.voice-fader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    max-width: 2em;
+}
+
+.fader-track {
+    position: relative;
+    width: 0.075rem; /* Reduced by 20% from 0.125rem for thinner appearance */
+    height: 3.6em; /* Reduced by 10% from 4em for proper proportions */
+    background-color: #000000; /* Black vertical line */
+    border-radius: 0.15rem 0.15rem 0 0; /* Rounded tops only, proportional to width */
+    cursor: pointer;
+    margin-bottom: 0.5em;
+    opacity: 1.0; /* Fully opaque */
+}
+
+.fader-handle {
+    position: absolute;
+    width: 0.675rem; /* Reduced by 10% from 0.75rem */
+    height: 0.675rem; /* Reduced by 10% from 0.75rem */
+    background-color: #000000;
+    border-radius: 50%;
+    left: 50%; /* Center on track */
+    transform: translateX(-50%); /* Center horizontally */
+    cursor: grab;
+    box-shadow: var(--control-panel-shadow);
+    transition: transform 0.1s ease;
+    opacity: 1.0; /* Ensure handles are fully opaque */
+    /* Handle positioning logic:
+       - 0% = handle center at bottom edge of track 
+       - 100% = handle center at top edge of track
+       - No baseline bottom offset needed - JS percentage positioning handles it all */
+}
+
+.fader-handle:hover {
+    transform: translateX(-50%) scale(1.1);
+}
+
+.fader-handle:active {
+    cursor: grabbing;
+    transform: translateX(-50%) scale(0.95);
+}
+
+.voice-label {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 0.9em; /* Slightly larger for better visibility */
+    color: #000000; /* Black text for maximum contrast */
+    font-weight: 700; /* Bolder font weight */
+    user-select: none;
+    text-align: center;
+}
+
+/* OLD LAYOUT SYSTEM - DEPRECATED
+   Replaced by .control-grid system in ui_elements.css
+   These container rules are no longer needed as the grid handles all layout
+*/
+
+/* Octave label - minimal binaural-specific override */
+.octave-label {
+    /* Inherits base styling from .control-widget-label */
+    position: relative;
+    top: 0.1rem; /* Fine-tune vertical alignment */
+}
+
+/* Octave widget - extends generic .control-widget--buttons */
+.octave-widget {
+    /* Inherits base dimensions from .control-widget (3.4rem width, 1.5rem height) */
+    position: relative; /* Needed for absolute positioning of pseudo-elements and buttons */
+}
+
+.octave-widget::before {
+    content: '';
+    position: absolute;
+    bottom: 0.625rem;
+    left: 0;
+    width: 3.4rem;
+    height: 0.075rem;
+    background: #333;
+}
+
+.octave-widget::after {
+    content: '';
+    position: absolute;
+    bottom: 0.25rem;
+    left: 0;
+    width: 3.4rem;
+    height: 0.75rem;
+    background: 
+        /* Line 1 (long) */ linear-gradient(90deg, #333 0rem, #333 0.075rem, transparent 0.075rem) 0rem 0rem / 0.075rem 0.75rem no-repeat,
+        /* Line 2 (short) */ linear-gradient(90deg, #333 0rem, #333 0.075rem, transparent 0.075rem) 0.8rem 0.1rem / 0.9rem 0.55rem no-repeat,
+        /* Line 3 (long) */ linear-gradient(90deg, #333 0rem, #333 0.075rem, transparent 0.075rem) 1.65rem 0rem / 0.075rem 0.75rem no-repeat,
+        /* Line 4 (short) */ linear-gradient(90deg, #333 0rem, #333 0.075rem, transparent 0.075rem) 2.5rem 0.1rem / 0.9rem 0.55rem no-repeat,
+        /* Line 5 (long) */ linear-gradient(90deg, #333 0rem, #333 0.075rem, transparent 0.075rem) 3.325rem 0rem / 0.075rem 0.75rem no-repeat;
+}
+
+.octave-btn {
+    position: absolute;
+    bottom: 0;
+    width: 1rem;
+    height: 1.25rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    z-index: 100;
+}
+
+/* Add filled circle indicator for active octave selection */
+.octave-btn.active::after {
+    content: '';
+    position: absolute;
+    top: 0.6rem;
+    left: 51%;
+    width: 0.4rem;
+    height: 0.4rem;
+    background: #000;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    pointer-events: none;
+}
+
+.octave-btn[data-oct="-2"] { left: -0.4625rem; }
+.octave-btn[data-oct="-1"] { left: 0.3375rem; }
+.octave-btn[data-oct="0"] { left: 1.1875rem; }
+.octave-btn[data-oct="1"] { left: 2.0375rem; }
+.octave-btn[data-oct="2"] { left: 2.85rem; }
+
+/* Width label - minimal binaural-specific override */
+.width-label {
+    /* Inherits base styling from .control-widget-label */
+    position: relative;
+    right: .1rem; /* Fine-tune horizontal alignment */
+}
+
+/* Width Control - uses generic .control-widget base class with SVG track variant */
+/* Dimensions inherited from .control-widget (3.4rem width, 1.5rem height) */
+
+.width-track {
+    width: 100%;
+    height: auto;
+    opacity: 0.8;
+    filter: brightness(0); /* Make SVG black */
+}
+
+/* Width handle - uses generic .control-widget__handle with center positioning for SVG */
+.width-handle {
+    position: absolute;
+    width: 0.4rem;
+    height: 0.4rem;
+    background-color: #000;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%; /* Default center position */
+    transform: translate(-50%, -50%); /* Center on SVG icon */
+    cursor: grab;
+    box-shadow: var(--control-panel-shadow);
+    transition: left 0.1s ease;
+    z-index: 10;
+    /* Handle positioning logic:
+       - 0% = full mono (both channels center)
+       - 100% = full stereo (current separation) */
+}
+
+.width-handle:hover {
+    transform: translate(-50%, -50%) scale(1.1);
+}
+
+.width-handle:active {
+    cursor: grabbing;
+    transform: translate(-50%, -50%) scale(0.95);
+}
+
+/* Width SVG Icon */

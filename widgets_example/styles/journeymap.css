@@ -1,0 +1,658 @@
+/* Journey Map widget styles (migrated to styles/widgets)
+   Restored journey-specific rules (preset/control UI has been moved to styles/ui_elements.css).
+*/
+
+/* ==============================================
+   🔧 CSS-LEVEL HIDING PROTOCOLS - JOURNEYMAP WIDGET
+   ==============================================
+   Individual element control via data attributes:
+   
+   - data-debug-journey-header="hidden|visible"   -> .journey-title
+   - data-debug-frequency-map="hidden|visible"    -> .journey-sequence  
+   - data-debug-jm-presets="hidden|visible"       -> .jm-presetter
+   
+   Usage: Debug controller toggles individual data attributes on body
+   ============================================== */
+
+/* Individual element hiding rules */
+[data-debug-journey-header="hidden"] .journey-title {
+  display: none !important;
+}
+
+[data-debug-frequency-map="hidden"] .journey-sequence {
+  display: none !important;
+}
+
+[data-debug-jm-presets="hidden"] .jm-presetter {
+  display: none !important;
+}
+
+/* Default visibility - presets hidden by default */
+.jm-presetter {
+  display: none;
+}
+
+/* Show presets when explicitly visible */
+[data-debug-jm-presets="visible"] .jm-presetter {
+  display: block;
+  /* Use font-size scaling instead of transform to affect actual layout dimensions */
+  font-size: 0.75rem; /* Reduces actual element sizes, not just visual appearance */
+  /* Negative top margin to reduce vertical spacing */
+  margin: -0.5rem 0 0 0;
+  padding: 0;
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* ===============================================
+   PRESETTER STANDARDIZATION - All elements uniform
+   =============================================== */
+
+/* PRESET SELECTOR ROW - Inherits from ui-base */
+[data-debug-jm-presets="visible"] .jm-presetter #jm-preset-selector.button_selector {
+  gap: 0.0625rem; /* Tighter gap for compact preset design */
+  margin: 0 auto 0.3rem auto; /* Reduced margin for tighter vertical spacing */
+  padding: 0; /* Remove any inherited padding */
+}
+
+/* Preset selector arrows - small grey buttons with consistent ui-base styling */
+.jm-presetter .button_selector__nav {
+  height: 1.0rem; /* Reduced for smaller preset size */
+  width: 1.0rem; /* Reduced for smaller preset size */
+  font-size: 0.625rem; /* Smaller arrow text for compact design */
+  font-weight: 500;
+  border-width: 0.0625rem; /* Match ui-base border thickness */
+  /* Shadow now inherited from base .button_selector__nav class */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative; /* Allow positioning adjustments */
+}
+
+/* Arrow buttons positioned by flexbox with small margins from edges */
+.jm-presetter #preset-prev {
+  margin-left: 0.3rem; /* Small margin from left edge */
+  flex-shrink: 0; /* Prevent buttons from shrinking */
+}
+
+.jm-presetter #preset-next {
+  margin-right: 0.3rem; /* Small margin from right edge */
+  flex-shrink: 0; /* Prevent buttons from shrinking */
+}
+
+/* Direct text content in preset selector - natural flow between buttons */
+.jm-presetter #jm-preset-selector {
+  font-size: 0.75rem; /* Explicit smaller font size for compact preset */
+  /* Height and line-height inherited from ui-base (2rem) - will scale with parent font-size: 0.75rem */
+  width: 25ch; /* Standard 25 character width to match totaltime */
+  max-width: 25ch; /* Standard 25 character width to match totaltime */
+  min-width: 25ch; /* Standard 25 character width to match totaltime */
+  overflow: hidden; /* Hide overflow for long preset names */
+  text-overflow: ellipsis; /* Show ellipsis for truncated text */
+  white-space: nowrap; /* Keep text on single line */
+  text-align: center; /* Center the text between buttons */
+  align-items: center; /* Vertically center all content including text */
+  justify-content: space-between; /* Space out arrow buttons to edges with text in center */
+  padding: 0 0.2rem 0.2rem 0.2rem; /* Added bottom padding for spacing */
+}
+
+/* ACTION ROW - All buttons and total time uniform */
+.jm-presetter .jm-preset-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center; /* Center all elements instead of space-between */
+  gap: 0.3rem; /* Manually adjustable gap - increase/decrease as needed */
+  margin: 0 auto 0.3rem auto; /* Reduced margin for tighter vertical spacing */
+  padding: 0; /* Remove any padding that could cause left margin issues */
+}
+
+/* All action row buttons - Inherit from ui-base */
+.jm-presetter .ui-btn {
+  font-size: 0.75rem; /* Smaller font size for compact preset design */
+  padding: 0 0.6em; /* Reduced padding for smaller buttons */
+  margin: 0; /* No margins - spacing controlled by parent gap */
+  /* Height inherited from ui-base (2rem) - will scale with parent font-size: 0.75rem */
+  flex-shrink: 0; /* Prevent buttons from shrinking */
+}
+
+/* Total time display - inherits from ui-base with consistent shadow and centering */
+/* Higher specificity to override ui_elements.css .jm-preset-nav .ui-base.ui-label.totaltime */
+[data-debug-jm-presets="visible"] .jm-presetter .jm-preset-nav .ui-base.ui-label.totaltime {
+  font-size: 0.75rem; /* Match button font-size for consistency - compact preset override */
+  padding: 0 0.6em; /* Match button padding for consistent sizing */
+  /* Height and line-height inherited from ui-base (2rem) - will scale with parent font-size: 0.75rem */
+  /* Width values inherited from ui_elements.css - DO NOT OVERRIDE HERE */
+  text-align: center;
+  /* Shadow and other visual properties inherited from ui-base */
+}
+
+/* END HIDING PROTOCOLS */
+.journey-map {
+  flex: 1; /* Fill available container space */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start; /* Pack items tightly from top - no space distribution */
+  gap: 0.0rem; /* Minimal gap between title, sequence, and preset selector */
+  text-align: center;
+  padding: 0.175rem; /* Reduced slightly from 0.5rem for tighter fit */
+  /* Remove max-height - let container control sizing */
+  transform: scale(1);
+  transform-origin: center center;
+  box-sizing: border-box; /* Include padding in size calculations */
+}
+
+/* CSS variables for band colors — JS will read these for robust color detection. */
+:root {
+  /* Alpha */
+  --band-alpha-primary: #33e164;
+  --band-alpha-dark: #2aa84f;
+  /* Delta */
+  --band-delta-primary: #1760d6;
+  --band-delta-dark: #0b3d91;
+  /* Theta */
+  --band-theta-primary: #a46ee6;
+  --band-theta-dark: #6b21a8;
+  /* Beta */
+  --band-beta-primary: #e26521;
+  --band-beta-dark: #d24604;
+  /* SMR */
+  --band-smr-primary: #e6e75a;
+  --band-smr-dark: #e9da34;
+}
+
+.journey-title {
+  font-family: "Inter", sans-serif;
+  font-weight: 300; /* Thin variant */
+  font-size: clamp(0.9rem, 2.5vw, 1.4rem);
+  margin: -0.4vh auto -0.7rem auto; /* Reduce top spacing and add negative bottom margin to pull closer */
+  color: #fff; /* White text */
+  text-shadow: 
+    /* Shadow-based outline (replaces stroke) */
+    -0.0625rem -0.0625rem 0 #000,
+    0.0625rem -0.0625rem 0 #000,
+    -0.0625rem 0.0625rem 0 #000,
+    0.0625rem 0.0625rem 0 #000,
+    /* Original blurred shadow bottom-right */
+    0.125rem 0.125rem 0.1rem rgba(0, 0, 0, 0.7);
+  text-align: center; /* Ensure text is centered */
+  width: 100%; /* Take full width of container */
+}
+
+.journey-sequence {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: flex-end;
+  flex-wrap: nowrap;
+  gap: 0.2em; /* Reduced slightly from 0.4em for tighter spacing */
+  margin-top: 0em; /* bring blocks closer to title */
+  margin-bottom: 0; /* Explicit bottom margin control - eliminate inherited spacing */
+  transform: scale(0.7);
+  transform-origin: center center;
+  overflow: visible; /* Allow shadows to extend beyond container */
+  background: transparent; /* Explicitly set transparent background */
+  padding: -1rem; /* Add padding to accommodate box shadows */
+}
+
+/* MASTER BOX CLASS - Shared styling for all journey map boxes */
+.jm-box {
+  --box-height: 7rem; /* UNIFORM HEIGHT for all boxes */
+  height: var(--box-height);
+  border-radius: 0.625rem;
+  color: #fff;
+  font-weight: bold;
+  font-family: "VCR OSD Mono", monospace;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  /* UNIFORM VISUAL STYLING */
+  box-shadow: 0 0.375rem 0.75rem rgba(0, 0, 0, 0.3), 0 0.1875rem 0.375rem rgba(0, 0, 0, 0.15); /* ui-base shadow */
+  border: 0.1875rem solid rgba(0,0,0,0.75);
+  /* UNIFORM TEXT STYLING */
+  text-shadow: 
+    0.125rem 0.125rem 0.1875rem rgba(0,0,0,0.99),
+    -0.0625rem -0.0625rem 0.0625rem rgba(0,0,0,0.99),
+    0.0625rem -0.0625rem 0.0625rem rgba(0,0,0,0.99),
+    -0.0625rem 0.0625rem 0.0625rem rgba(0,0,0,0.99);
+  font-size: 1.2rem; /* Unified font size for all text elements in boxes */
+}
+
+/* PLATEAU SUBTYPE - Frequency boxes */
+.jm-box.plateau {
+  --box-width: 5.5rem; /* Increased by ~15% from 4.5rem for better proportions */
+  width: var(--box-width);
+  border-radius: 0.625rem; /* Slightly more rounded for plateaus */
+}
+
+/* TRANSITION SUBTYPE - Transition boxes */
+.jm-box.transition {
+  width: 2.35rem; /* Keep transition boxes as they are - they're fine */
+  border-radius: 0.5rem; /* Slightly less rounded for transitions */
+  overflow: hidden; /* Contain scanlines within border - fix bleeding */
+}
+
+/* PLATEAU TEXT ELEMENTS */
+.jm-box.plateau .label {
+  margin-bottom: 0.175rem;
+}
+
+.jm-box.plateau .duration {
+  margin-top: 0.175rem;
+}
+
+/* TRANSITION TEXT ELEMENTS */
+.jm-box.transition .duration {
+  margin-top: 0.175rem;
+  margin-bottom: 0.15rem;
+  align-self: center;
+}
+
+/* Enhanced text styling for all box text elements */
+.jm-box .label,
+.jm-box .freq,
+.jm-box .duration {
+  color: #fff;
+  background: transparent;
+  padding: 0;
+  border: none;
+  position: relative;
+  -webkit-text-stroke: 0.015rem #555; /* Main stroke */
+}
+
+/* Blurred stroke effect using pseudo-element */
+.jm-box .label::before,
+.jm-box .freq::before,
+.jm-box .duration::before {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: transparent;
+  -webkit-text-stroke: 0.05rem #333;
+  filter: blur(0.0625rem);
+  z-index: -1;
+}
+
+/* PLATEAU WAVE COLORS - Brainwave frequency backgrounds */
+
+/* Universal scanlines effect for all plateau boxes */
+.jm-box.plateau {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.0) 0px, 
+      rgba(255,255,255,0.1) 1px, 
+      rgba(0,0,0,0.0) 1px, 
+      rgba(0,0,0,0.1) 2px
+    ),
+    /* Base color from specific frequency class below */
+    var(--plateau-bg-color);
+}
+
+.jm-box.plateau.alpha {
+  --plateau-bg-color: linear-gradient(180deg, var(--band-alpha-primary, #33e164) 0%, var(--band-alpha-dark, #2aa84f) 60%);
+}
+.jm-box.plateau.delta {
+  --plateau-bg-color: linear-gradient(180deg, var(--band-delta-primary, #1760d6) 0%, var(--band-delta-dark, #0b3d91) 65%);
+}
+.jm-box.plateau.theta {
+  --plateau-bg-color: linear-gradient(180deg, var(--band-theta-primary, #a46ee6) 0%, var(--band-theta-dark, #6b21a8) 65%);
+}
+.jm-box.plateau.beta {
+  --plateau-bg-color: linear-gradient(180deg, var(--band-beta-primary, #e26521) 0%, var(--band-beta-dark, #d24604) 65%);
+}
+.jm-box.plateau.smr {
+  --plateau-bg-color: linear-gradient(180deg, var(--band-smr-primary, #e6e75a) 0%, var(--band-smr-dark, #e9da34) 65%);
+}
+
+/* FIRST/LAST PLATEAU EDGE GRADIENTS */
+.jm-box.plateau.first-plateau.alpha {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-alpha-dark, #2aa84f) 0%, var(--band-alpha-primary, #33e164) 40%);
+}
+.jm-box.plateau.last-plateau.alpha {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-alpha-primary, #33e164) 60%, var(--band-alpha-dark, #2aa84f) 100%);
+}
+
+.jm-box.plateau.first-plateau.delta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-delta-dark, #0b3d91) 0%, var(--band-delta-primary, #1760d6) 25%);
+}
+.jm-box.plateau.last-plateau.delta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-delta-primary, #1760d6) 75%, var(--band-delta-dark, #0b3d91) 100%);
+}
+
+.jm-box.plateau.first-plateau.theta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-theta-dark, #6b21a8) 0%, var(--band-theta-primary, #a46ee6) 25%);
+}
+.jm-box.plateau.last-plateau.theta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-theta-primary, #a46ee6) 75%, var(--band-theta-dark, #6b21a8) 100%);
+}
+
+.jm-box.plateau.first-plateau.beta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-beta-dark, #d24604) 0%, var(--band-beta-primary, #e26521) 25%);
+}
+.jm-box.plateau.last-plateau.beta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-beta-primary, #e26521) 75%, var(--band-beta-dark, #d24604) 100%);
+}
+
+.jm-box.plateau.first-plateau.smr {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-smr-dark, #e9da34) 0%, var(--band-smr-primary, #e6e75a) 25%);
+}
+.jm-box.plateau.last-plateau.smr {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-smr-primary, #e6e75a) 75%, var(--band-smr-dark, #e9da34) 100%);
+}
+
+/* TRANSITION GRADIENT BACKGROUNDS */
+.jm-box.transition.alpha-delta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-alpha-primary, #33e164), var(--band-delta-primary, #1760d6));
+}
+
+.jm-box.transition.delta-alpha {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-delta-primary, #1760d6), var(--band-alpha-primary, #33e164));
+}
+
+.jm-box.transition.delta-theta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-delta-primary, #1760d6), var(--band-theta-primary, #a46ee6));
+}
+
+.jm-box.transition.theta-delta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-theta-primary, #a46ee6), var(--band-delta-primary, #1760d6));
+}
+
+.jm-box.transition.theta-alpha {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-theta-primary, #a46ee6), var(--band-alpha-primary, #33e164));
+}
+
+.jm-box.transition.alpha-theta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-alpha-primary, #33e164), var(--band-theta-primary, #a46ee6));
+}
+
+.jm-box.transition.alpha-smr {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-alpha-primary, #33e164), var(--band-smr-primary, #e6e75a));
+}
+
+.jm-box.transition.smr-alpha {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-smr-primary, #e6e75a), var(--band-alpha-primary, #33e164));
+}
+
+.jm-box.transition.alpha-beta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-alpha-primary, #33e164), var(--band-beta-primary, #e26521));
+}
+
+.jm-box.transition.beta-alpha {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-beta-primary, #e26521), var(--band-alpha-primary, #33e164));
+}
+
+.jm-box.transition.smr-beta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-smr-primary, #e6e75a), var(--band-beta-primary, #e26521));
+}
+
+.jm-box.transition.beta-smr {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-beta-primary, #e26521), var(--band-smr-primary, #e6e75a));
+}
+
+.jm-box.transition.theta-smr {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-theta-primary, #a46ee6), var(--band-smr-primary, #e6e75a));
+}
+
+.jm-box.transition.smr-theta {
+  background: 
+    /* 1px alternating scanlines overlay */
+    repeating-linear-gradient(0deg, 
+      rgba(255,255,255,0.1) 0px, 
+      rgba(255,255,255,0.2) 1px, 
+      rgba(0,0,0,0.1) 1px, 
+      rgba(0,0,0,0.2) 2px
+    ),
+    /* Base gradient */
+    linear-gradient(90deg, var(--band-smr-primary, #e6e75a), var(--band-theta-primary, #a46ee6));
+}
+
+/* SVG ENVELOPE STYLING - Inside transitions */
+.jm-box.transition .env {
+  width: 60%;
+  height: auto;
+  display: block;
+  margin: 0 auto 0.375rem;
+  transform-origin: center center;
+  will-change: transform;
+  pointer-events: none;
+  align-self: center;
+  transform-box: fill-box;
+  -webkit-transform-box: fill-box;
+}
+
+.jm-box.transition .env.down {
+  transform: none;
+}
+.jm-box.transition .env.up {
+  transform: scaleY(-1);
+}
+.jm-box.transition .env.flip-x {
+  transform: scaleX(-1);
+}
+.jm-box.transition .env.up.flip-x {
+  transform: scaleY(-1) scaleX(-1);
+}
+
+/* Subtle dark-to-base gradient on the leading/trailing edge for first/last plateaus */
+/* first/last plateau gradients are set inline by JS for precise hues; no CSS fallback required */
+
+/* Preset & control UI removed from this widget file.
+   Rules migrated to `styles/ui_elements.css` to centralize shared widget controls.
+   Rollback: copy rules from styles/ui_elements.css or restore styles/widgets/journeymap.css.bak
+*/
+
+/* Diagnostic helper (not used by default) */
+/* To test specificity/order issues, paste the following into the console to inject a high-specificity override:
+const s = document.createElement('style'); s.id='jm-override'; s.textContent = '.journey-map .freq-box.alpha{background: linear-gradient(180deg,#33e164,#2aa84f) !important; border-color:#000 !important;}'; document.head.appendChild(s);
+*/
