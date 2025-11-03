@@ -182,14 +182,14 @@
                 <div class="input-label">hz</div>
                 <input type="number" id="plateau1_hz" placeholder="Hz" step="0.01" value="5">
                 <div class="input-label">s</div>
-                <input type="number" id="plateau1_time" placeholder="Seconds" step="0.1" value="30">
+                <input type="number" id="plateau1_time" placeholder="Seconds" step="0.1" value="5">
             </div>
             
             <!-- Transition 1 -->
             <div class="transition">
                 <label>Transition 1</label>
                 <div class="input-label">s</div>
-                <input type="number" id="transition1_time" placeholder="Seconds" step="0.1" value="15">
+                <input type="number" id="transition1_time" placeholder="Seconds" step="0.1" value="10">
             </div>
             
             <!-- Plateau 2 -->
@@ -198,23 +198,23 @@
                 <div class="input-label">hz</div>
                 <input type="number" id="plateau2_hz" placeholder="Hz" step="0.01" value="15">
                 <div class="input-label">s</div>
-                <input type="number" id="plateau2_time" placeholder="Seconds" step="0.1" value="15">
+                <input type="number" id="plateau2_time" placeholder="Seconds" step="0.1" value="5">
             </div>
             
             <!-- Transition 2 -->
             <div class="transition">
                 <label>Transition 2</label>
                 <div class="input-label">s</div>
-                <input type="number" id="transition2_time" placeholder="Seconds" step="0.1" value="15">
+                <input type="number" id="transition2_time" placeholder="Seconds" step="0.1" value="10">
             </div>
             
             <!-- Plateau 3 -->
             <div class="plateau">
                 <label>Plateau 3</label>
                 <div class="input-label">hz</div>
-                <input type="number" id="plateau3_hz" placeholder="Hz" step="0.01" value="10">
+                <input type="number" id="plateau3_hz" placeholder="Hz" step="0.01" value="5">
                 <div class="input-label">s</div>
-                <input type="number" id="plateau3_time" placeholder="Seconds" step="0.1" value="20">
+                <input type="number" id="plateau3_time" placeholder="Seconds" step="0.1" value="5">
             </div>
         </div>
     </div>
@@ -347,10 +347,10 @@
                 const config = logJourneyMap();
                 console.log('🎵 Started playing with configuration:', config);
                 
-                // Start GLSL blinking with plateau1 Hz
-                const startHz = config.plateau1.hz || 5;
-                updateStatus(`Playing ${startHz}Hz`);
-                startGLSLBlinking(startHz);
+                // Start real timeline system
+                updateStatus(`Starting Timeline...`);
+                startTimelineTracking();
+                // startGLSLBlinking(startHz); // DISABLED - will connect to real timeline events
                 
             } else {
                 // Stop playing  
@@ -359,14 +359,151 @@
                 btn.classList.remove('playing');
                 console.log('⏹ Stopped playing');
                 
-                // Stop GLSL blinking
-                stopGLSLBlinking();
+                // Stop real timeline system
+                stopTimelineTracking();
+                // stopGLSLBlinking(); // DISABLED
                 updateStatus('Timeline Ready');
             }
         }
         
-        // Status display management
+        // Status display management  
         let statusDisplay;
+        
+        // Real Timeline System
+        let timelineStartTime = 0;
+        let timelineSegments = [];
+        let timelineUpdateInterval;
+        let currentSegmentIndex = 0;
+        
+        function createTimelineFromInputs() {
+            const config = logJourneyMap();
+            const segments = [];
+            
+            // Plateau 1
+            if (config.plateau1.hz > 0 && config.plateau1.duration > 0) {
+                segments.push({
+                    type: 'plateau',
+                    phase: 1,
+                    hz: config.plateau1.hz,
+                    duration: config.plateau1.duration
+                });
+            }
+            
+            // Transition 1
+            if (config.transition1.duration > 0 && segments.length > 0 && config.plateau2.hz > 0) {
+                segments.push({
+                    type: 'transition',
+                    phase: 1,
+                    startHz: config.plateau1.hz,
+                    endHz: config.plateau2.hz,
+                    duration: config.transition1.duration
+                });
+            }
+            
+            // Plateau 2
+            if (config.plateau2.hz > 0 && config.plateau2.duration > 0) {
+                segments.push({
+                    type: 'plateau',
+                    phase: 2,
+                    hz: config.plateau2.hz,
+                    duration: config.plateau2.duration
+                });
+            }
+            
+            // Transition 2
+            if (config.transition2.duration > 0 && segments.length > 0 && config.plateau3.hz > 0) {
+                segments.push({
+                    type: 'transition',
+                    phase: 2,
+                    startHz: config.plateau2.hz,
+                    endHz: config.plateau3.hz,
+                    duration: config.transition2.duration
+                });
+            }
+            
+            // Plateau 3
+            if (config.plateau3.hz > 0 && config.plateau3.duration > 0) {
+                segments.push({
+                    type: 'plateau',
+                    phase: 3,
+                    hz: config.plateau3.hz,
+                    duration: config.plateau3.duration
+                });
+            }
+            
+            // Calculate cumulative start times
+            let cumulativeTime = 0;
+            segments.forEach(segment => {
+                segment.startTime = cumulativeTime;
+                segment.endTime = cumulativeTime + segment.duration;
+                cumulativeTime += segment.duration;
+            });
+            
+            return segments;
+        }
+        
+        function startTimelineTracking() {
+            timelineSegments = createTimelineFromInputs();
+            timelineStartTime = performance.now() / 1000.0;
+            currentSegmentIndex = 0;
+            
+            console.log('Timeline segments:', timelineSegments);
+            
+            if (timelineSegments.length === 0) {
+                updateStatus('No valid timeline segments');
+                return;
+            }
+            
+            // Update every 100ms for smooth status updates
+            timelineUpdateInterval = setInterval(updateTimelineStatus, 100);
+            updateTimelineStatus(); // Initial update
+        }
+        
+        function stopTimelineTracking() {
+            if (timelineUpdateInterval) {
+                clearInterval(timelineUpdateInterval);
+                timelineUpdateInterval = null;
+            }
+            currentSegmentIndex = 0;
+            timelineSegments = [];
+        }
+        
+        function updateTimelineStatus() {
+            const currentTime = (performance.now() / 1000.0) - timelineStartTime;
+            
+            // Find current segment
+            let currentSegment = null;
+            for (let i = 0; i < timelineSegments.length; i++) {
+                const segment = timelineSegments[i];
+                if (currentTime >= segment.startTime && currentTime < segment.endTime) {
+                    currentSegment = segment;
+                    currentSegmentIndex = i;
+                    break;
+                }
+            }
+            
+            if (!currentSegment) {
+                // Timeline finished
+                updateStatus('Timeline Complete');
+                stopTimelineTracking();
+                return;
+            }
+            
+            const timeInSegment = currentTime - currentSegment.startTime;
+            const timeLeft = currentSegment.duration - timeInSegment;
+            
+            let statusText;
+            if (currentSegment.type === 'plateau') {
+                statusText = `Plateau ${currentSegment.phase}: ${currentSegment.hz.toFixed(1)}Hz | ${timeLeft.toFixed(1)}s left`;
+            } else {
+                // Calculate current Hz for transition
+                const progress = timeInSegment / currentSegment.duration;
+                const currentHz = currentSegment.startHz + (currentSegment.endHz - currentSegment.startHz) * progress;
+                statusText = `Transition ${currentSegment.phase}: ${currentHz.toFixed(1)}Hz | ${timeLeft.toFixed(1)}s left`;
+            }
+            
+            updateStatus(statusText);
+        }
 
         // WebGL/GLSL Low-Latency Visual System
         let gl;
@@ -546,15 +683,10 @@
                 input.addEventListener('input', () => {
                     logJourneyMap();
                     
-                    // Update blinking if currently playing
+                    // Restart timeline if currently playing to reflect new values
                     if (isPlaying) {
-                        const config = logJourneyMap();
-                        const newHz = config.plateau1.hz || 5;
-                        if (newHz !== glCurrentHz) {
-                            console.log(`Hz changed to ${newHz}, updating GLSL blink rate`);
-                            updateStatus(`Playing ${newHz}Hz`);
-                            startGLSLBlinking(newHz);
-                        }
+                        console.log('Timeline inputs changed, restarting timeline tracking');
+                        startTimelineTracking(); // Restart with new values
                     }
                 });
             });
