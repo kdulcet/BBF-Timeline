@@ -1,9 +1,18 @@
 /**
  * StateTimeline Class
- * Adapted from Tone.js StateTimeline for JourneyMap Timeline System
+ * Direct adaptation from Tone.js StateTimeline for transport state management
  * 
- * A Timeline subclass for tracking state changes over time.
- * Provides methods: setStateAtTime("state", time) and getValueAtTime(time)
+ * CORE FUNCTIONALITY (identical to Tone.js StateTimeline):
+ * • Timeline subclass specialized for state tracking (started/stopped/paused)
+ * • State interpolation: getValueAtTime() returns state active at given time
+ * • State history: getLastState() finds previous occurrences of specific states
+ * • State duration: getDurationInState() calculates time spent in states
+ * 
+ * TONE.JS SOURCE: Based on Tone.js/core/util/StateTimeline.ts
+ * Used by Transport for tracking play/pause/stop states with sample accuracy
+ * 
+ * USAGE: JMTimeline uses this to track transport state changes for proper
+ * pause/resume behavior and synth lifecycle management (auto start/stop)
  */
 
 // Import Timeline base class (assumes timeline.js is loaded)
@@ -33,8 +42,16 @@ class StateTimelineEvent extends TimelineEvent {
 }
 
 /**
- * StateTimeline - Timeline specialized for state management
- * Tracks play/pause/stop states with sample-accurate timing
+ * StateTimeline - Timeline subclass for transport state management
+ * 
+ * TRANSPORT STATE TRACKING (like Tone.js Transport state management):
+ * • Maintains started/stopped/paused state history with sample-accurate timing
+ * • Enables proper pause/resume behavior by tracking state timeline
+ * • Allows synths to query "was transport running at time X?" 
+ * 
+ * TONE.JS PATTERN: Similar to how Tone.js Transport tracks its own state
+ * for determining oscillator start times, automation scheduling, etc.
+ * See: Tone.js Transport._state property and state management methods
  */
 class StateTimeline extends Timeline {
   constructor(initialState = PlaybackState.STOPPED, options = {}) {
@@ -43,7 +60,7 @@ class StateTimeline extends Timeline {
     this.name = "StateTimeline";
     this._initial = initialState;
     
-    // Set initial state at time 0
+    // Initialize with starting state (like Tone.js Transport constructor)
     this.setStateAtTime(this._initial, 0);
   }
 

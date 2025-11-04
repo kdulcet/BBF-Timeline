@@ -280,3 +280,38 @@ All timeline events are logged. Check console for:
 - Simplified to two specific bands vs full transport
 - Custom segment-based timeline vs generic events
 - Direct DOM event dispatch vs callback system
+
+## Transition-Aware Pulse Scheduling: IMPLEMENTED
+
+### Problem Solved:
+The pulse scheduling system (`_schedule32nEvents()`) now properly handles transition segments where Hz is continuously ramping. Pulse rates smoothly accelerate/decelerate during transitions using Tone.js TickParam patterns.
+
+**Root Solution:** Implemented Tone.js `TickParam._getTicksUntilEvent()` trapezoidal integration pattern with transition-aware Hz interpolation for smooth pulse rate changes.
+
+### Tone.js Implementation Adapted:
+From Tone.js `TickParam._getTicksUntilEvent()` implementation:
+
+```javascript
+// Tone.js trapezoidal integration pattern (now implemented)
+return 0.5 * (time - event.time) * (val0 + val1) + event.ticks;
+
+// Our implementation in _getNextPulseTime():
+const avgHz = 0.5 * (currentHz + futureHz);
+const transitionAwareInterval = calculate32nInterval(avgHz);
+```
+
+### Implementation Complete:
+The JMTimeline `_schedule32nEvents()` method now:
+
+1. **✅ Detects Transition Segments**: `_getHzAtTime()` identifies transition vs plateau segments
+2. **✅ Interpolates Hz Values**: Linear interpolation matching Web Audio ramping during transitions  
+3. **✅ Dynamic Pulse Intervals**: `_getNextPulseTime()` uses trapezoidal integration for smooth rate changes
+4. **✅ Preserves Web Audio Ramping**: Wave Band automation unchanged, works perfectly
+
+### Key Methods Added:
+```javascript
+_getHzAtTime(time)              // Transition-aware Hz interpolation
+_getNextPulseTime(currentTime, currentHz)  // Trapezoidal integration interval calculation
+```
+
+**Result:** Pulse events now properly reflect continuously changing Hz during transitions with sample-accurate timing. During a 5Hz→7.5Hz transition, pulses gradually accelerate instead of jumping between rates.

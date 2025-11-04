@@ -224,7 +224,7 @@
         
         <div class="carrier-input">
             <label>Carrier Wave:</label>
-            <input type="number" id="carrier_hz" placeholder="Hz" step="0.01" value="440">
+            <input type="number" id="carrier_hz" placeholder="Hz" step="0.01" value="110">
             <span class="hz-suffix">Hz</span>
         </div>
     </div>
@@ -261,6 +261,7 @@
         // Global timeline variables
         let audioContext;
         let timeline;
+        let isoSynth;
         let isPlaying = false;
         
         // Create timeline segments from the existing type-ins
@@ -331,7 +332,11 @@
             const segments = createTimelineSegments();
             timeline = new JMTimeline(audioContext, segments);
             
+            // Initialize ISO Synth
+            isoSynth = new ISOSynth(audioContext);
+            
             console.log('Timeline initialized with segments:', segments);
+            console.log('ISO Synth initialized - audio pulse system ready');
         }
         
         // Play/Stop button functionality - simplified to focus on blinking
@@ -528,13 +533,13 @@
             // NOTIFICATION ONLY - blink comes from 32n pulse listener, not polling
         }
 
-        // WebGL/GLSL Low-Latency Visual System
+        // WebGL/GLSL Low-Latency Visual System - EVENT-DRIVEN ONLY
         let gl;
         let glProgram;
         let glCanvas;
         let glAnimationId;
-        let glStartTime = 0;
-        let glCurrentHz = 0;
+        let glBlinkTime = 0;
+        let glIsBlinking = false;
         let glHoldTime = 0.05; // Configurable hold time in seconds (50ms default)
         
         // GLSL Vertex Shader - simple fullscreen quad
@@ -545,27 +550,24 @@
             }
         `;
         
-        // GLSL Fragment Shader - Hz-based blinking
+        // GLSL Fragment Shader - EVENT-DRIVEN blinking (no calculations)
         const fragmentShaderSource = `
             precision mediump float;
-            uniform float u_time;
-            uniform float u_hz;
+            uniform float u_blinkTime;
+            uniform float u_currentTime;
             uniform float u_holdTime;
+            uniform float u_isBlinking;
             
             void main() {
-                if (u_hz <= 0.0) {
-                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // White when stopped
-                    return;
-                }
-                
-                float cycle = 1.0 / u_hz;
-                float timeInCycle = mod(u_time, cycle);
-                
-                // Simple on/off based on hold time
-                if (timeInCycle < u_holdTime) {
-                    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red flash
+                if (u_isBlinking > 0.5) {
+                    float timeSinceBlink = u_currentTime - u_blinkTime;
+                    if (timeSinceBlink < u_holdTime) {
+                        gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red flash
+                    } else {
+                        gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // White background
+                    }
                 } else {
-                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // White background
+                    gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); // White when stopped
                 }
             }
         `;
@@ -654,43 +656,56 @@
             }
         }
         
-        function updateGLSLHz(hz) {
+        function triggerGLSLBlink() {
             if (!gl) return;
             
-            // Start blinking if not already running
-            if (!glAnimationId && hz > 0) {
-                glCurrentHz = hz;
-                glStartTime = performance.now() / 1000.0;
+            // Record the EXACT moment of this pulse event
+            glBlinkTime = performance.now() / 1000.0;
+            glIsBlinking = true;
+            
+            // Start animation loop if not already running
+            if (!glAnimationId) {
                 renderGLSL();
-            } else if (glAnimationId) {
-                // Just update Hz without restarting timing - smooth transitions
-                glCurrentHz = hz;
+            }
+        }
+        
+        function stopGLSLBlinking() {
+            if (glAnimationId) {
+                cancelAnimationFrame(glAnimationId);
+                glAnimationId = null;
+            }
+            glIsBlinking = false;
+            
+            // Render final gray state
+            if (gl) {
+                renderGLSLFrame();
             }
         }
         
         function renderGLSL() {
-            const currentTime = performance.now() / 1000.0;
-            const elapsedTime = currentTime - glStartTime;
+            renderGLSLFrame();
             
-            renderGLSLFrame(elapsedTime, glCurrentHz);
-            
-            if (glCurrentHz > 0) {
+            if (glIsBlinking) {
                 glAnimationId = requestAnimationFrame(renderGLSL);
             }
         }
         
-        function renderGLSLFrame(time, hz) {
+        function renderGLSLFrame() {
             if (!gl || !glProgram) return;
             
             gl.viewport(0, 0, glCanvas.width, glCanvas.height);
             
-            const u_time = gl.getUniformLocation(glProgram, 'u_time');
-            const u_hz = gl.getUniformLocation(glProgram, 'u_hz');
-            const u_holdTime = gl.getUniformLocation(glProgram, 'u_holdTime');
+            const currentTime = performance.now() / 1000.0;
             
-            gl.uniform1f(u_time, time);
-            gl.uniform1f(u_hz, hz);
+            const u_blinkTime = gl.getUniformLocation(glProgram, 'u_blinkTime');
+            const u_currentTime = gl.getUniformLocation(glProgram, 'u_currentTime');
+            const u_holdTime = gl.getUniformLocation(glProgram, 'u_holdTime');
+            const u_isBlinking = gl.getUniformLocation(glProgram, 'u_isBlinking');
+            
+            gl.uniform1f(u_blinkTime, glBlinkTime);
+            gl.uniform1f(u_currentTime, currentTime);
             gl.uniform1f(u_holdTime, glHoldTime);
+            gl.uniform1f(u_isBlinking, glIsBlinking ? 1.0 : 0.0);
             
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         }
@@ -733,9 +748,9 @@
             document.addEventListener('timeline.pulse.32n', (event) => {
                 const { hz, time } = event.detail;
                 
-                // Trigger GLSL blink on each 32n pulse
+                // PURE LISTENER: Pulse event → immediate blink (no calculations)
                 if (gl && hz > 0) {
-                    updateGLSLHz(hz);
+                    triggerGLSLBlink();
                 }
                 
                 console.log(`32n Pulse: ${hz.toFixed(2)}Hz at ${time.toFixed(3)}s`);
@@ -773,5 +788,8 @@
     <script src="widgets/synths/shared/transport/timeline_transport.js"></script>
     <script src="widgets/synths/shared/transport/timeline_journeymap.js"></script>
     <script src="widgets/synths/shared/transport/timeline_listeners.js"></script>
+    
+    <!-- Import ISO Synth System -->
+    <script src="widgets/synths/iso_synth.js"></script>
 </body>
 </html>

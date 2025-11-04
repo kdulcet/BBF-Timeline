@@ -1,14 +1,34 @@
 /**
  * Timeline Synth Integration Abstractions
- * Base classes and mixins for synths to easily access Wave Band or 32n Band
+ * Base classes following Tone.js event-driven architecture for timeline-aware synths
  * 
- * Wave Band: Continuous Hz automation for frequency-based synths (binaural, carriers)
- * 32n Band: Discrete pulse events for rhythmic synths (ISO, percussion, triggers)
+ * INTEGRATION PATTERNS (based on Tone.js examples):
+ * • Wave Band: Continuous Hz automation for frequency-based synths (binaural beats, carrier osc)
+ * • 32n Band: Discrete pulse events for rhythmic synths (ISO pulses, percussion, gating)
+ * • Dual Band: Both continuous and rhythmic for complex synthesis
+ * 
+ * TONE.JS COMPARISON:
+ * • Similar to Tone.js Transport.scheduleRepeat() for rhythmic events
+ * • Similar to Tone.js Signal automation for continuous parameter changes
+ * • Document events replace Tone.js callback system for loose coupling
+ * 
+ * USAGE: Synths extend WaveBandListener, PulseBandListener, or DualBandListener
+ * and override event methods (onHzChanged, onPulse32n, etc.)
  */
 
 /**
  * Base Timeline Listener
- * Handles common timeline event setup and teardown
+ * Foundation class for all timeline-aware synths with automatic event management
+ * 
+ * ARCHITECTURE: Document event-driven (not Tone.js Transport callbacks)
+ * • Automatic event cleanup prevents memory leaks
+ * • Auto start/stop synth lifecycle tied to timeline transport
+ * • Subclasses override onTimelineStart/Stop/Pause for custom behavior
+ * 
+ * COMPARISON TO TONE.JS:
+ * • Tone.js uses direct callbacks: Transport.on('start', callback)
+ * • We use document events for loose coupling between timeline and synths  
+ * • Automatic cleanup vs manual Transport.off() management
  */
 class TimelineListener {
   constructor(audioContext, options = {}) {
@@ -16,11 +36,11 @@ class TimelineListener {
     this.isListening = false;
     this.eventHandlers = new Map();
     
-    // Configuration
+    // Automatic synth lifecycle management
     this.autoStart = options.autoStart !== false;
     this.autoStop = options.autoStop !== false;
     
-    // Current state
+    // Current timeline state tracking
     this.currentHz = 0;
     this.currentWaveType = "UNKNOWN";
     this.timelineRunning = false;
@@ -112,15 +132,27 @@ class TimelineListener {
 
 /**
  * Wave Band Listener (Continuous Hz Automation)
- * For synths that need smooth frequency changes (binaural beats, carrier oscillators)
+ * For synths needing smooth frequency changes - binaural beats, carrier oscillators
+ * 
+ * WAVE BAND EVENTS (continuous parameter automation):
+ * • timeline.hz.changed: Sample-accurate Hz changes from Web Audio ramping
+ * • timeline.hz.visual: 60fps smooth updates for visual feedback
+ * • timeline.transition.start: Transition begin notifications
+ * • timeline.wave_type.changed: Brainwave band changes (DELTA/THETA/ALPHA/etc)
+ * 
+ * TONE.JS EQUIVALENT: Like connecting to Tone.Signal for parameter automation
+ * or using Transport.scheduleRepeat() with high frequency for smooth changes
+ * 
+ * USAGE EXAMPLE: BinauralSynth extends WaveBandListener, overrides onHzChanged()
+ * to update oscillator.frequency with smooth Web Audio ramping
  */
 class WaveBandListener extends TimelineListener {
   constructor(audioContext, options = {}) {
     super(audioContext, options);
     
-    // Wave Band specific configuration
+    // Wave Band configuration options
     this.smoothTransitions = options.smoothTransitions !== false;
-    this.hzUpdateRate = options.hzUpdateRate || 'realtime'; // 'realtime' | 'audio' | 'visual'
+    this.hzUpdateRate = options.hzUpdateRate || 'realtime'; // Update rate preference
     
     this._setupWaveBandListeners();
   }
@@ -213,17 +245,31 @@ class WaveBandListener extends TimelineListener {
 
 /**
  * 32n Band Listener (Discrete Pulse Events)  
- * For synths that need rhythmic triggers (ISO pulses, percussion, gating)
+ * For synths needing rhythmic triggers - ISO pulses, percussion, event gating
+ * 
+ * 32n BAND EVENTS (rhythmic trigger events):
+ * • timeline.pulse.32n: Sample-accurate pulse triggers at 32nd note boundaries
+ * • timeline.pulse.flash: Visual pulse events for feedback/blinking
+ * • timeline.hz.changed: Monitors Hz changes to update pulse rate
+ * 
+ * TONE.JS EQUIVALENT: Like Transport.scheduleRepeat("32n", callback) but with
+ * dynamic Hz-based timing instead of fixed musical subdivision
+ * 
+ * CURRENT ISSUE: Pulse timing doesn't account for Hz transitions (sees them as
+ * single values instead of continuous ramping). Needs TickParam-style calculations.
+ * 
+ * USAGE EXAMPLE: ISOSynth extends PulseBandListener, overrides onPulse32n()
+ * to trigger note events or gate audio at precise 32nd note intervals
  */
 class PulseBandListener extends TimelineListener {
   constructor(audioContext, options = {}) {
     super(audioContext, options);
     
-    // 32n Band specific configuration
-    this.pulseAccuracy = options.pulseAccuracy || 'sample'; // 'sample' | 'visual'
-    this.enablePulseFlash = options.enablePulseFlash !== false;
+    // 32n Band configuration options
+    this.pulseAccuracy = options.pulseAccuracy || 'sample'; // Timing precision preference
+    this.enablePulseFlash = options.enablePulseFlash !== false; // Visual feedback
     
-    // Pulse tracking
+    // Pulse event tracking state
     this.pulseCount = 0;
     this.lastPulseTime = 0;
     this.currentPulseInterval = 0;

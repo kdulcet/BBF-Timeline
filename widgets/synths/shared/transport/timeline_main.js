@@ -1,10 +1,19 @@
 /**
- * Timeline Base Class
- * Adapted from Tone.js Timeline for JourneyMap Timeline System
+ * Timeline Base Class  
+ * Direct adaptation from Tone.js Timeline with JourneyMap extensions
  * 
- * A Timeline class for scheduling and maintaining state along a timeline.
- * All events must have a "time" property. Internally, events are stored
- * in time order for fast retrieval using binary search.
+ * CORE FUNCTIONALITY (identical to Tone.js Timeline):
+ * • Time-ordered event storage with O(log n) binary search retrieval
+ * • Memory management with configurable event limits
+ * • Optimized insertion for chronologically ordered events (increasing=true)
+ * • Event iteration methods for time ranges (forEachBetween)
+ * 
+ * TONE.JS SOURCE: Based on Tone.js/core/util/Timeline.ts
+ * Key methods: add(), get(), getAfter(), getBefore(), forEachBetween()
+ * Binary search: _search() method for O(log n) event lookup
+ * 
+ * USAGE: Base class for StateTimeline and event storage in JMTimeline
+ * All events must have numeric "time" property for ordering
  */
 
 /**
@@ -212,8 +221,15 @@ class Timeline {
 
   /**
    * Binary search for event index at or before given time
+   * 
+   * TONE.JS IMPLEMENTATION: Direct port from Tone.js Timeline._search()
+   * See: Tone.js/core/util/Timeline.ts#L200-L250 (binary search algorithm)
+   * 
+   * O(log n) performance for timeline event lookup - critical for real-time
+   * audio scheduling where events need fast retrieval by time
+   * 
    * @param {number} time - Time to search for
-   * @returns {number} Index of event, or -1 if none found
+   * @returns {number} Index of event at or before time, or -1 if none found
    */
   _search(time) {
     if (this._timeline.length === 0) {
@@ -224,19 +240,19 @@ class Timeline {
     const length = this._timeline.length;
     let end = length;
     
-    // Optimization: if time is after last event, return last index
+    // Fast path: time after all events (common case for real-time scheduling)
     if (length > 0 && this._timeline[length - 1].time <= time) {
       return length - 1;
     }
     
-    // Binary search
+    // Standard binary search (identical to Tone.js implementation)
     while (beginning < end) {
       const midPoint = Math.floor(beginning + (end - beginning) / 2);
       const event = this._timeline[midPoint];
       const nextEvent = this._timeline[midPoint + 1];
       
       if (this._isEqual(event.time, time)) {
-        // Find last event with same time
+        // Handle multiple events at same time - return last one
         let lastIndex = midPoint;
         for (let i = midPoint; i < this._timeline.length; i++) {
           if (this._isEqual(this._timeline[i].time, time)) {
