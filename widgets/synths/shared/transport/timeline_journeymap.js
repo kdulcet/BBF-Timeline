@@ -1,21 +1,35 @@
 /**
  * JMTimeline - JourneyMap Timeline Engine
- * Two-band scheduling system following Tone.js Transport patterns with JourneyMap extensions
  * 
- * ARCHITECTURE (Based on Tone.js Transport._processTick + custom extensions):
- * • Wave Band: Web Audio native ramping (linearRampToValueAtTime) for smooth Hz automation
- * • 32n Band: Dynamic pulse scheduling using Tone.js Timeline.forEachAtTime patterns
+ * PURPOSE:
+ * Dual-band scheduling system for binaural beat synthesis with timeline-based automation.
+ * Manages both continuous Hz changes (Wave Band) and discrete rhythmic triggers (Pulse Band).
  * 
- * KEY TONE.JS INTEGRATIONS:
- * • TickParam._getTicksUntilEvent() pattern for transition-aware calculations
- * • Transport._processTick() approach for just-in-time event scheduling  
- * • StateTimeline for transport state tracking (start/stop/pause)
- * • Timeline binary search with memory management
+ * TWO-BAND ARCHITECTURE:
  * 
- * TONE.JS INTEGRATION COMPLETE:
- * • Tone.js TickParam ramping with linear interpolation implemented for 32n Band
- * • Both Wave Band (Web Audio native) and 32n Band (TickParam pattern) handle transitions
- * • Trapezoidal integration for smooth pulse rate changes during Hz ramps
+ * Wave Band (Continuous Hz Automation):
+ * • Uses Web Audio linearRampToValueAtTime() for sample-accurate frequency changes
+ * • Virtual Hz parameter (ConstantSourceNode.offset) tracks current frequency
+ * • Perfect for binaural carrier oscillators and smooth frequency modulation
+ * 
+ * Pulse Band (Discrete 32nd-Note Triggers):
+ * • Generates rhythmic pulse events aligned to 32n boundaries
+ * • Uses transition-aware calculations for smooth pulse rate changes during ramps
+ * • Perfect for ISO pulse synthesis and rhythmic gating
+ * 
+ * SCHEDULING APPROACH:
+ * • 32ms ticker loop with 100ms lookahead window (events scheduled ahead of time)
+ * • Immediate event dispatch with future Web Audio times (no jitter)
+ * • Transition-aware pulse timing using trapezoidal integration
+ * • Binary search timelines for efficient event storage and retrieval
+ * 
+ * TONE.JS INTEGRATION REFERENCE:
+ * This implementation adapts patterns from Tone.js for robust timing:
+ * • Transport._processTick() → Dynamic scheduling with lookahead (lines 732-780)
+ * • TickParam._getTicksUntilEvent() → Trapezoidal integration for transitions (lines 425-449)
+ * • StateTimeline → Transport state tracking (line 139)
+ * • Timeline → Binary search event storage (lines 149-169)
+ * • Signal/Param → Virtual Hz parameter automation (lines 210-221)
  * 
  * See: https://github.com/Tonejs/Tone.js/blob/main/Tone/core/clock/TickParam.ts#L163-L175
  */
@@ -140,22 +154,19 @@ class JMTimeline {
     this.currentSegmentIndex = 0;
     this.timelinePosition = 0;
     
-    // Tone.js StateTimeline pattern for transport control (start/stop/pause tracking)
-    // See: Tone.js/core/util/StateTimeline.ts for reference implementation  
+    // Transport state tracking (start/stop/pause)
     this._stateTimeline = new StateTimeline(PlaybackState.STOPPED, {
       memory: 100,
       increasing: true
     });
     
-    // Timeline storage following Tone.js Timeline patterns with binary search
-    // See: Tone.js/core/util/Timeline.ts for core Timeline implementation
+    // Wave Band event storage (binary search timeline with memory management)
     this._waveEvents = new Timeline({
       memory: TIMELINE_CONSTANTS.MEMORY_LIMIT,
       increasing: true
     });
     
-    // Pulse events - currently NOT transition-aware (this is the bug to fix)
-    // Should follow Tone.js TickParam._getTicksUntilEvent() for ramping calculations
+    // Pulse Band event storage (transition-aware pulse scheduling)
     this._pulseEvents = new Timeline({
       memory: TIMELINE_CONSTANTS.MEMORY_LIMIT / 2,
       increasing: true
@@ -180,70 +191,65 @@ class JMTimeline {
     this._currentHz = 0;
     this._lastWaveType = "UNKNOWN";
     
-    // Web Audio native parameter ramping (like Tone.js Signal/Param architecture)
-    // Uses ConstantSourceNode.offset as virtual Hz parameter for linearRampToValueAtTime
-    // See: Tone.js/signal/Signal.ts and Tone.js/core/context/Param.ts patterns
+    // Web Audio virtual Hz parameter (sample-accurate automation)
     this._virtualHzParam = this._createVirtualHzParam();
     
-    // Dynamic pulse scheduling variables (Tone.js Transport._processTick approach)
-    // See: Tone.js/core/clock/Transport.ts#L237-L270 (_processTick implementation)
+    // Dynamic pulse scheduling state
     this._scheduledPulseKeys = new Set();  // Prevent duplicate scheduling
     this._nextPulseTime = null;            // Current pulse scheduling cursor
     this._lastScheduledPulseTime = 0;      // Track last scheduled pulse to prevent duplicates
     
-    // Ticker-based scheduling (Tone.js Ticker pattern)
+    // Ticker-based scheduling loop
     this._tickerInterval = null;           // 32ms ticker loop
     
     this._setupEventListeners();
   }
 
   /**
-   * Create virtual Hz parameter using Web Audio native ramping
+   * Create virtual Hz parameter using Web Audio automation
    * 
-   * TONE.JS PATTERN: Tone.js Signal uses ConstantSourceNode.offset as the core parameter
-   * for all automation (setValueAtTime, linearRampToValueAtTime, etc.)
-   * See: Tone.js/signal/Signal.ts#L37-L54 (Signal constructor + _param setup)
+   * Uses ConstantSourceNode.offset as a virtual parameter for sample-accurate
+   * Hz automation. Synths can read via .value property or connect directly.
    * 
-   * This gives us sample-accurate ramping that synths can read via .value property
-   * or connect to directly for audio-rate modulation
+   * @returns {AudioParam} Sample-accurate Hz parameter
+   * @private
    */
   _createVirtualHzParam() {
-    // ConstantSourceNode.offset = sample-accurate AudioParam (like Tone.js Signal)
     const constantSource = this.audioContext.createConstantSource();
     constantSource.offset.value = 2.0; // Default starting Hz
     constantSource.start(0); // Must start to enable parameter updates
     
-    // Return AudioParam for automation (linearRampToValueAtTime, etc.)
     return constantSource.offset;
   }
 
   /**
    * Get current Hz from virtual parameter (sample-accurate)
    * 
-   * TONE.JS EQUIVALENT: Similar to Tone.js Param.getValueAtTime() but using direct .value
-   * See: Tone.js/core/context/Param.ts#L451-L470 (getValueAtTime implementation)
+   * Returns instantaneous Hz value from Web Audio automation curve.
+   * Note: Pulse Band scheduling uses transition-aware calculations during ramps.
    * 
-   * CRITICAL: This returns instantaneous value - works for Wave Band automation
-   * but 32n pulse scheduling needs transition-aware calculations during ramps
+   * @returns {number} Current Hz value
    */
   getCurrentHz() {
     if (!this.isRunning) return 0;
     
-    // Sample-accurate Hz from Web Audio parameter (like Tone.js Signal.value)
     return this._virtualHzParam.value;
   }
 
   /**
-   * Schedule Hz ramp using Web Audio native automation
+   * Schedule Hz ramp using Web Audio automation
    * 
-   * TONE.JS PATTERN: Exact same as Tone.js Param automation methods
+   * @param {number} fromHz - Starting Hz
+   * @param {number} toHz - Target Hz
+   * @param {number} startTime - Web Audio start time
+   * @param {number} duration - Ramp duration in seconds
+   * @private
    * See: Tone.js/core/context/Param.ts#L369-L381 (linearRampToValueAtTime)
    * 
    * This creates smooth, sample-accurate frequency transitions that work perfectly
-   * for Wave Band automation. Issue is in 32n Band pulse scheduling, not here.
+   * @private
    */
   _scheduleHzRamp(fromHz, toHz, startTime, duration) {
-    // Web Audio native automation (identical to Tone.js Param implementation)
     this._virtualHzParam.setValueAtTime(fromHz, startTime);
     this._virtualHzParam.linearRampToValueAtTime(toHz, startTime + duration);
     
@@ -252,6 +258,10 @@ class JMTimeline {
 
   /**
    * Compile user segments into executable timeline
+   * 
+   * @param {Array} segments - User-defined timeline segments
+   * @returns {Array} Compiled timeline with cumulative time positions
+   * @private
    */
   _compile(segments) {
     const timeline = [];
@@ -281,36 +291,31 @@ class JMTimeline {
   }
 
   /**
-   * Schedule Web Audio Hz automation for entire timeline
+   * Schedule Wave Band Hz automation for entire timeline
    * 
-   * WAVE BAND AUTOMATION (THIS WORKS CORRECTLY):
-   * Uses Web Audio native linearRampToValueAtTime for smooth frequency changes.
-   * Identical to Tone.js Param automation - creates sample-accurate ramping.
+   * Creates sample-accurate frequency automation using Web Audio's linearRampToValueAtTime.
+   * Schedules all plateau and transition segments for smooth Hz changes.
    * 
-   * TONE.JS EQUIVALENT: Similar to how Tone.js schedules parameter automation
-   * See: Tone.js/core/context/Param.ts for setValueAtTime + linearRampToValueAtTime
-   * 
-   * NOTE: This Wave Band automation is correct. The issue is in 32n Band pulse 
-   * scheduling which doesn't account for continuously changing Hz during ramps.
+   * @private
    */
-  _scheduleNativeHzRamps() {
+  _scheduleWaveBandAutomation() {
     let currentHz = 2.0; // Default starting Hz
     
-    // Clear existing automation (like Tone.js Param.cancelScheduledValues)
+    // Clear existing automation
     this._virtualHzParam.cancelScheduledValues(0);
     
     for (const segment of this.compiledTimeline) {
       const segmentStartTime = this.startTime + segment.time_sec;
       
       if (segment.type === SegmentType.PLATEAU) {
-        // Plateau: constant Hz (setValueAtTime)
+        // Plateau: constant Hz
         currentHz = segment.hz;
         this._virtualHzParam.setValueAtTime(currentHz, segmentStartTime);
         
         console.log(`Plateau: ${currentHz}Hz @ ${segmentStartTime.toFixed(3)}s (${segment.duration_sec}s)`);
         
       } else if (segment.type === SegmentType.TRANSITION) {
-        // Transition: linear ramp (linearRampToValueAtTime)  
+        // Transition: linear ramp  
         this._virtualHzParam.setValueAtTime(segment.startHz, segmentStartTime);
         this._virtualHzParam.linearRampToValueAtTime(
           segment.endHz, 
@@ -322,36 +327,29 @@ class JMTimeline {
       }
     }
     
-    console.log(`Wave Band Hz automation scheduled (Web Audio native ramping)`);
+    console.log(`Wave Band Hz automation scheduled`);
   }
 
-
-
   /**
-   * Initialize transition-aware pulse scheduling system
+   * Initialize Pulse Band scheduling system
    * 
-   * 32n BAND SCHEDULING (FIXED - TRANSITION-AWARE):
-   * Follows Tone.js Transport._processTick() pattern with TickParam._getTicksUntilEvent()
-   * transition-aware calculations for smooth pulse rate changes during Hz ramps
+   * Sets up transition-aware pulse scheduling with trapezoidal integration for
+   * smooth pulse rate changes during Hz transitions.
    * 
-   * TONE.JS PATTERN: Transport schedules events dynamically in _processTick()
-   * See: Tone.js/core/clock/Transport.ts#L255-L270 (timeline.forEachAtTime usage)
-   * 
-   * IMPLEMENTED: Tone.js TickParam interpolation for Hz during ramp calculations
-   * See: Tone.js/core/clock/TickParam.ts#L163-L202 (_getTicksUntilEvent method)
-   * 
-   * SOLUTION: Pulse scheduling accounts for ramping Hz during transitions using
-   * trapezoidal integration and interpolated Hz values at each pulse time.
+   * @private
    */
-  _scheduleDynamicPulses() {
+  _initializePulseBandScheduling() {
     this._scheduledPulseKeys.clear();
     
-    // Dynamic scheduling initialized with transition-aware calculations
-    console.log(`32n Band pulse scheduling initialized (transition-aware using Tone.js TickParam pattern)`);
+    console.log(`Pulse Band scheduling initialized (transition-aware)`);
   }
 
   /**
    * Convert ticks to seconds (assuming 120 BPM base)
+   * 
+   * @param {number} ticks - Ticks to convert
+   * @returns {number} Time in seconds
+   * @private
    */
   _ticksToSeconds(ticks) {
     const bpm = 120; // Base BPM for tick calculation
@@ -363,8 +361,12 @@ class JMTimeline {
   /**
    * Get Hz value at specific time, accounting for Web Audio ramping
    * 
-   * TONE.JS PATTERN: Similar to TickParam.getValueAtTime() but using our
-   * Web Audio native parameter automation for sample-accurate Hz values
+   * For current time, uses direct parameter value. For future times, interpolates
+   * based on timeline segment (constant for plateaus, linear for transitions).
+   * 
+   * @param {number} time - Web Audio time
+   * @returns {number} Hz value at specified time
+   * @private
    */
   _getHzAtTime(time) {
     if (!this.isRunning || !this._virtualHzParam) return 0;
@@ -398,8 +400,13 @@ class JMTimeline {
   /**
    * Calculate next pulse time using transition-aware interval calculation
    * 
-   * TONE.JS PATTERN: Adapted from TickParam._getTicksUntilEvent() trapezoidal integration
-   * Uses average Hz over small time interval for smooth pulse rate changes during transitions
+   * Uses trapezoidal integration (averaging Hz over interval) for smooth pulse
+   * rate changes during Hz transitions.
+   * 
+   * @param {number} currentTime - Current Web Audio time
+   * @param {number} currentHz - Current Hz value
+   * @returns {number} Time of next pulse
+   * @private
    */
   _getNextPulseTime(currentTime, currentHz) {
     // Basic 32n interval calculation
@@ -438,6 +445,7 @@ class JMTimeline {
 
   /**
    * Setup internal event listeners and scheduling
+   * @private
    */
   _setupEventListeners() {
     // Bind context for callbacks
@@ -447,6 +455,10 @@ class JMTimeline {
     // Setup audio scheduling interval (background processing)
     this._audioSchedulingInterval = null;
   }
+
+  // ============================================================================
+  // TRANSPORT CONTROL (Start/Stop/Pause)
+  // ============================================================================
 
   /**
    * Start timeline playback
@@ -472,13 +484,13 @@ class JMTimeline {
       // Clear scheduled pulse tracking
       this._scheduledPulseKeys.clear();
       
-      // Reset pulse timing for dynamic scheduling (Tone.js approach)
+      // Reset pulse timing for dynamic scheduling
       this._nextPulseTime = startTime;
       
-      // Schedule Hz automation and pulse events (Tone.js approach)
-      console.log(`Scheduling Web Audio automation and pulse events...`);
-      this._scheduleNativeHzRamps();
-      this._scheduleDynamicPulses();
+      // Schedule Hz automation and pulse events
+      console.log(`Scheduling Wave Band automation and Pulse Band events...`);
+      this._scheduleWaveBandAutomation();
+      this._initializePulseBandScheduling();
     }
     
     this.isRunning = true;
@@ -595,6 +607,8 @@ class JMTimeline {
 
   /**
    * Get total timeline duration in seconds
+   * 
+   * @returns {number} Total duration in seconds
    */
   getTotalDuration() {
     if (this.compiledTimeline.length === 0) return 0;
@@ -606,21 +620,23 @@ class JMTimeline {
   /**
    * Get current Hz value from Web Audio parameter (sample-accurate)
    * 
-   * TONE.JS EQUIVALENT: Like Tone.js Signal.value property access
-   * See: Tone.js/signal/Signal.ts#L105-L110 (value getter implementation)
-   * 
    * Returns instantaneous Hz value from Web Audio automation curve.
-   * Perfect for Wave Band synths, but 32n Band needs transition-aware calculations.
+   * Note: Pulse Band scheduling uses transition-aware calculations during ramps.
+   * 
+   * @returns {number} Current Hz value
    */
   getCurrentHz() {
     if (!this.isRunning || !this._virtualHzParam) return 0;
     
-    // Sample-accurate Hz from Web Audio parameter (like Tone.js Signal.value)
     return this._virtualHzParam.value;
   }
 
   /**
    * Find timeline segment at given time position
+   * 
+   * @param {number} position - Timeline position in seconds
+   * @returns {Object|null} Segment at position, or null if not found
+   * @private
    */
   _findSegmentAtTime(position) {
     for (const segment of this.compiledTimeline) {
@@ -632,26 +648,32 @@ class JMTimeline {
     return null;
   }
 
+  // ============================================================================
+  // AUDIO SCHEDULING SYSTEM (32ms Ticker Loop)
+  // ============================================================================
+
   /**
-   * Start audio scheduling with 32ms ticker (Tone.js Ticker pattern)
+   * Start audio scheduling with 32ms ticker loop
    * 
-   * REFACTORED: 32ms ticker replaces 25ms interval
-   * - Matches Tone.js Ticker interval for consistency
-   * - Calls scheduling loop every 32ms to check lookahead window
+   * Runs background scheduling loop that checks lookahead window and dispatches
+   * pulse events ahead of time for sample-accurate timing.
+   * 
+   * @private
    */
   _startAudioScheduling() {
     if (this._tickerInterval) {
       clearInterval(this._tickerInterval);
     }
     
-    console.log(`Starting 32ms ticker loop (Tone.js pattern)`);
+    console.log(`Starting 32ms ticker loop`);
     
-    // 32ms ticker loop (like Tone.js Ticker.ts)
+    // 32ms ticker loop    // 32ms ticker loop (like Tone.js Ticker.ts)
     this._tickerInterval = setInterval(this._boundAudioLoop, TIMELINE_CONSTANTS.TICKER_INTERVAL);
   }
 
   /**
    * Stop audio scheduling ticker
+   * @private
    */
   _stopAudioScheduling() {
     if (this._tickerInterval) {
@@ -662,6 +684,11 @@ class JMTimeline {
 
   /**
    * Audio scheduling loop (background processing)
+   * 
+   * Called every 32ms to process Wave Band Hz changes, Pulse Band events,
+   * and segment transitions.
+   * 
+   * @private
    */
   _audioSchedulingLoop() {
     if (!this.isRunning || this.isPaused) {
@@ -677,26 +704,30 @@ class JMTimeline {
     }
     
     // Process Wave Band events (Hz automation)
-    this._scheduleWaveEvents(startTime, endTime);
+    this._processWaveBandEvents(startTime, endTime);
     
-    // Process 32n Band events (pulse triggers)
-    this._schedule32nEvents(startTime, endTime);
+    // Process Pulse Band events (32n triggers)
+    this._processPulseBandEvents(startTime, endTime);
     
     // Process segment transitions
-    this._processSegmentTransitions(startTime, endTime);
+    this._updateCurrentSegment(startTime, endTime);
   }
+
+  // ============================================================================
+  // WAVE BAND PROCESSING
+  // ============================================================================
 
   /**
    * Process Wave Band events (Hz change notifications for synths)
    * 
-   * WAVE BAND PROCESSING (WORKS CORRECTLY):
-   * Hz automation is handled by Web Audio native ramping (_scheduleNativeHzRamps)
-   * This method just reads current Hz value and dispatches change events for synths
+   * Hz automation is handled by Web Audio ramping (_scheduleWaveBandAutomation).
+   * This method reads current Hz and dispatches change events for synth listeners.
    * 
-   * The actual frequency automation happens sample-accurately via Web Audio parameter,
-   * this is just for notifying Wave Band listeners (binaural synths, etc.)
+   * @param {number} startTime - Period start time
+   * @param {number} endTime - Period end time
+   * @private
    */
-  _scheduleWaveEvents(startTime, endTime) {
+  _processWaveBandEvents(startTime, endTime) {
     // Read current Hz from Web Audio parameter (sample-accurate)
     const displayHz = this.getCurrentHz();
     
@@ -716,19 +747,21 @@ class JMTimeline {
     }
   }
 
+  // ============================================================================
+  // PULSE BAND PROCESSING
+  // ============================================================================
+
   /**
-   * Schedule 32n Band pulse events (Tone.js Ticker pattern)
+   * Process Pulse Band 32n events (rhythmic triggers)
    * 
-   * REFACTORED: Ticker-based scheduling with immediate event dispatch
-   * - 32ms ticker loop calculates pulses in 100ms lookahead window
-   * - Dispatches events IMMEDIATELY with future scheduled time
-   * - ISO synth schedules Web Audio nodes for exact time (sample-accurate)
-   * - No just-in-time dispatch = no jitter
+   * Uses 32ms ticker loop with 100ms lookahead window. Dispatches events
+   * immediately with future scheduled time for sample-accurate synth timing.
    * 
-   * TONE.JS PATTERN: Similar to Transport._processTick + Ticker loop
-   * See: Tone.js/core/clock/Transport.ts and Ticker.ts
+   * @param {number} startTime - Period start time
+   * @param {number} endTime - Period end time
+   * @private
    */
-  _schedule32nEvents(startTime, endTime) {
+  _processPulseBandEvents(startTime, endTime) {
     const now = this.audioContext.currentTime;
     const lookahead = now + TIMELINE_CONSTANTS.AUDIO_LOOKAHEAD;
     
