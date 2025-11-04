@@ -832,9 +832,16 @@ class JMTimeline {
   }
 
   /**
-   * Process segment transitions
+   * Update current segment tracking
+   * 
+   * Checks if timeline has moved to a new segment and dispatches
+   * segment change and transition events.
+   * 
+   * @param {number} startTime - Period start time
+   * @param {number} endTime - Period end time
+   * @private
    */
-  _processSegmentTransitions(startTime, endTime) {
+  _updateCurrentSegment(startTime, endTime) {
     // Check if we've moved to a new segment
     const currentPosition = this._getTimelinePosition();
     const newSegment = this._findSegmentAtTime(currentPosition);
