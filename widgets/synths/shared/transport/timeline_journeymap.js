@@ -159,8 +159,9 @@ class JMTimeline {
     this._currentHz = 0;
     this._lastWaveType = "UNKNOWN";
     
-    // Tone.js-style pre-calculated Hz curve system
-    this._preCalculatedHz = new Map(); // time -> hz mapping
+    // Tone.js-style Hz parameter system with native Web Audio ramping
+    this._virtualHzParam = this._createVirtualHzParam();
+    // Removed _preCalculatedHz - now using Web Audio native ramping
     this._hzCurveSegments = [];        // linear segments for smooth transitions
     this._tickBasedPulses = new Map(); // tick -> pulse mapping
     this._ppq = 48;                    // Pulses Per Quarter (32n = PPQ/8 = 6 ticks)
@@ -170,6 +171,43 @@ class JMTimeline {
     this._scheduledPulseKeys = new Set(); // Track already-scheduled pulse keys
     
     this._setupEventListeners();
+  }
+
+  /**
+   * Create virtual Hz parameter using Web Audio's native ramping (Tone.js style)
+   */
+  _createVirtualHzParam() {
+    // Create a ConstantSourceNode as our virtual Hz parameter
+    const constantSource = this.audioContext.createConstantSource();
+    constantSource.offset.value = 2.0; // Default starting Hz
+    constantSource.start(0); // Start immediately
+    
+    // Return the offset AudioParam for ramping
+    return constantSource.offset;
+  }
+
+  /**
+   * Get current Hz from virtual parameter (sample-accurate)
+   */
+  getCurrentHz() {
+    if (!this.isRunning) return 0;
+    
+    // Get sample-accurate Hz from Web Audio parameter
+    const currentTime = this.audioContext.currentTime;
+    return this._virtualHzParam.value;
+  }
+
+  /**
+   * Schedule Hz ramp using native Web Audio (Tone.js pattern)
+   */
+  _scheduleHzRamp(fromHz, toHz, startTime, duration) {
+    // Set starting value
+    this._virtualHzParam.setValueAtTime(fromHz, startTime);
+    
+    // Schedule linear ramp to end value
+    this._virtualHzParam.linearRampToValueAtTime(toHz, startTime + duration);
+    
+    console.log(`Scheduled Hz ramp: ${fromHz}Hz → ${toHz}Hz over ${duration}s starting at ${startTime.toFixed(3)}s`);
   }
 
   /**
@@ -203,94 +241,111 @@ class JMTimeline {
   }
 
   /**
-   * Pre-calculate Hz curves for smooth transitions (Tone.js approach)
-   * This eliminates real-time interpolation during playback
+   * Schedule native Web Audio Hz ramps for all timeline segments (Tone.js approach)
    */
-  _preCalculateHzCurves() {
-    this._preCalculatedHz.clear();
-    this._hzCurveSegments = [];
+  _scheduleNativeHzRamps() {
+    let currentHz = 2.0; // Default starting Hz
+    
+    // Clear any existing automation
+    this._virtualHzParam.cancelScheduledValues(0);
     
     for (const segment of this.compiledTimeline) {
+      const segmentStartTime = this.startTime + segment.time_sec;
+      
       if (segment.type === SegmentType.PLATEAU) {
-        // Simple plateau - constant Hz
-        const segmentEnd = segment.time_sec + segment.duration_sec;
-        this._preCalculatedHz.set(segment.time_sec, segment.hz);
-        this._preCalculatedHz.set(segmentEnd, segment.hz);
+        // Plateau: set fixed Hz value
+        currentHz = segment.hz;
+        this._virtualHzParam.setValueAtTime(currentHz, segmentStartTime);
+        
+        console.log(`Scheduled plateau: ${currentHz}Hz at ${segmentStartTime.toFixed(3)}s for ${segment.duration_sec}s`);
         
       } else if (segment.type === SegmentType.TRANSITION) {
-        // Complex transition - break into linear segments
-        this._preCalculateTransitionSegments(segment);
+        // Transition: schedule linear ramp from startHz to endHz
+        this._virtualHzParam.setValueAtTime(segment.startHz, segmentStartTime);
+        this._virtualHzParam.linearRampToValueAtTime(
+          segment.endHz, 
+          segmentStartTime + segment.duration_sec
+        );
+        
+        currentHz = segment.endHz;
+        console.log(`Scheduled transition: ${segment.startHz}Hz → ${segment.endHz}Hz over ${segment.duration_sec}s starting at ${segmentStartTime.toFixed(3)}s`);
       }
     }
     
-    console.log(`Pre-calculated ${this._preCalculatedHz.size} Hz curve points`);
+    console.log(`Scheduled native Web Audio Hz automation for entire timeline`);
   }
 
-  /**
-   * Pre-calculate transition segments (Tone.js linear approximation approach)
-   */
-  _preCalculateTransitionSegments(segment) {
-    const segmentCount = Math.ceil(
-      segment.duration_sec * TIMELINE_CONSTANTS.TRANSITION_SEGMENTS_PER_SECOND
-    );
-    const segmentDuration = segment.duration_sec / segmentCount;
-    
-    for (let i = 0; i <= segmentCount; i++) {
-      const segmentTime = segment.time_sec + (segmentDuration * i);
-      const progress = i / segmentCount;
-      
-      // Calculate Hz at this segment point
-      let hz;
-      if (segment.transitionType === 'exponential') {
-        // Exponential curve approximation
-        const factor = Math.pow(segment.endHz / segment.startHz, progress);
-        hz = segment.startHz * factor;
-      } else {
-        // Linear interpolation (default)
-        hz = segment.startHz + (segment.endHz - segment.startHz) * progress;
-      }
-      
-      this._preCalculatedHz.set(segmentTime, hz);
-    }
-  }
+
 
   /**
-   * Pre-calculate fixed pulse schedule for each Hz segment
-   * This ensures sample-accurate 32n pulses during transitions
+   * Schedule pulse events based on timeline segments (fixed intervals per segment)
+   * This creates stable pulse scheduling without depending on Web Audio parameter
    */
-  _preCalculateFixedPulseSchedule() {
+  _scheduleDynamicPulses() {
     this._tickBasedPulses.clear();
+    this._scheduledPulseKeys.clear();
     
-    // Process each pre-calculated Hz segment
-    const hzTimepoints = Array.from(this._preCalculatedHz.entries()).sort((a, b) => a[0] - b[0]);
+    let pulseIndex = 0;
     
-    for (let i = 0; i < hzTimepoints.length - 1; i++) {
-      const [startTime, hz] = hzTimepoints[i];
-      const [endTime] = hzTimepoints[i + 1];
-      
-      if (hz > 0) {
-        // Calculate fixed 32n interval for this Hz segment
-        const pulseInterval = calculate32nInterval(hz);
+    // Schedule pulses for each timeline segment
+    for (const segment of this.compiledTimeline) {
+      if (segment.type === SegmentType.PLATEAU) {
+        // Plateau: fixed Hz, regular pulse intervals
+        const pulseInterval = calculate32nInterval(segment.hz);
+        let segmentTime = segment.time_sec;
+        const segmentEnd = segment.time_sec + segment.duration_sec;
         
-        // Schedule pulses at regular intervals within this segment
-        let pulseTime = startTime;
-        let pulseIndex = 0;
-        
-        while (pulseTime < endTime) {
-          this._tickBasedPulses.set(`${startTime}_${pulseIndex}`, {
-            time: pulseTime,
-            hz: hz,
-            segmentStart: startTime,
-            pulseIndex: pulseIndex
-          });
+        while (segmentTime < segmentEnd) {
+          const pulseKey = `${segmentTime.toFixed(6)}_${pulseIndex}`;
           
-          pulseTime += pulseInterval;
-          pulseIndex++;
+          if (!this._scheduledPulseKeys.has(pulseKey)) {
+            this._tickBasedPulses.set(pulseKey, {
+              time: segmentTime,
+              hz: segment.hz,
+              absoluteTime: this.startTime + segmentTime,
+              pulseIndex: pulseIndex
+            });
+            
+            this._scheduledPulseKeys.add(pulseKey);
+            pulseIndex++;
+          }
+          
+          segmentTime += pulseInterval;
+        }
+        
+      } else if (segment.type === SegmentType.TRANSITION) {
+        // Transition: variable Hz, schedule pulses at regular time intervals
+        const TRANSITION_PULSE_RESOLUTION = 0.025; // 25ms resolution for transitions
+        let segmentTime = segment.time_sec;
+        const segmentEnd = segment.time_sec + segment.duration_sec;
+        
+        while (segmentTime < segmentEnd) {
+          // Calculate Hz at this point in transition (linear interpolation)
+          const progress = (segmentTime - segment.time_sec) / segment.duration_sec;
+          const hz = segment.startHz + (progress * (segment.endHz - segment.startHz));
+          
+          if (hz > 0) {
+            const pulseKey = `${segmentTime.toFixed(6)}_${pulseIndex}`;
+            
+            if (!this._scheduledPulseKeys.has(pulseKey)) {
+              this._tickBasedPulses.set(pulseKey, {
+                time: segmentTime,
+                hz: hz,
+                absoluteTime: this.startTime + segmentTime,
+                pulseIndex: pulseIndex
+              });
+              
+              this._scheduledPulseKeys.add(pulseKey);
+              pulseIndex++;
+            }
+          }
+          
+          segmentTime += TRANSITION_PULSE_RESOLUTION;
         }
       }
     }
     
-    console.log(`Pre-calculated ${this._tickBasedPulses.size} fixed-interval pulses`);
+    console.log(`Scheduled ${this._tickBasedPulses.size} fixed pulses for all timeline segments`);
   }
 
   /**
@@ -304,24 +359,11 @@ class JMTimeline {
   }
 
   /**
-   * Get pre-calculated Hz at specific time (no real-time interpolation!)
+   * Get current Hz at specific time using Web Audio parameter (sample-accurate!)
    */
-  _getPreCalculatedHz(time) {
-    // Find the closest pre-calculated point
-    let closestTime = 0;
-    let closestHz = 0;
-    let minDiff = Infinity;
-    
-    for (const [calcTime, hz] of this._preCalculatedHz) {
-      const diff = Math.abs(time - calcTime);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestTime = calcTime;
-        closestHz = hz;
-      }
-    }
-    
-    return closestHz;
+  _getHzAtTime(time) {
+    // Use sample-accurate Web Audio parameter value
+    return this.getCurrentHz();
   }
 
   /**
@@ -360,10 +402,10 @@ class JMTimeline {
       // Clear scheduled pulse tracking
       this._scheduledPulseKeys.clear();
       
-      // Pre-calculate Hz curves and fixed pulse schedule (Tone.js approach)
-      console.log(`Pre-calculating timeline with ${TIMELINE_CONSTANTS.TRANSITION_SEGMENTS_PER_SECOND} segments/sec...`);
-      this._preCalculateHzCurves();
-      this._preCalculateFixedPulseSchedule();
+      // Schedule native Web Audio Hz ramps and dynamic pulses (Tone.js approach)
+      console.log(`Scheduling native Web Audio Hz automation...`);
+      this._scheduleNativeHzRamps();
+      this._scheduleDynamicPulses();
     }
     
     this.isRunning = true;
@@ -494,10 +536,8 @@ class JMTimeline {
   getCurrentHz(time = null) {
     if (!this.isRunning) return 0;
     
-    const position = this._getTimelinePosition(time);
-    
-    // Use pre-calculated Hz value - no interpolation during playback!
-    return this._getPreCalculatedHz(position);
+    // Use sample-accurate Web Audio parameter value!
+    return this._virtualHzParam.value;
   }
 
   /**
