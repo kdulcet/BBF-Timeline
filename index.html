@@ -106,6 +106,73 @@
             color: #666;
         }
         
+        .volume-sliders {
+            display: flex;
+            gap: 20px;
+            margin-left: 30px;
+        }
+        
+        .volume-widget {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .volume-widget label {
+            font-weight: bold;
+            font-size: 14px;
+            color: #2196F3;
+        }
+        
+        .volume-slider-vertical {
+            -webkit-appearance: slider-vertical;
+            width: 40px;
+            height: 75px;
+            writing-mode: bt-lr; /* IE */
+            -webkit-appearance: slider-vertical; /* WebKit */
+            background: transparent;
+        }
+        
+        .volume-slider-vertical::-webkit-slider-runnable-track {
+            width: 2px;
+            height: 75px;
+            background: #000;
+            border: none;
+        }
+        
+        .volume-slider-vertical::-moz-range-track {
+            width: 2px;
+            height: 75px;
+            background: #000;
+            border: none;
+        }
+        
+        .volume-slider-vertical::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 35px;
+            height: 20px;
+            background: #2196F3;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        
+        .volume-slider-vertical::-moz-range-thumb {
+            width: 35px;
+            height: 20px;
+            background: #2196F3;
+            cursor: pointer;
+            border-radius: 3px;
+            border: none;
+        }
+        
+        .volume-value {
+            font-size: 12px;
+            color: #666;
+            font-weight: bold;
+        }
+        
         .controls-section {
             margin: 20px 0;
             text-align: center;
@@ -223,10 +290,74 @@
             <label>Carrier Wave:</label>
             <input type="number" id="carrier_hz" placeholder="Hz" step="0.01" value="110">
             <span class="hz-suffix">Hz</span>
+            
+            <label>Width [1]:</label>
+            <input type="number" id="width1" placeholder="0-100" min="0" max="100" step="1" value="100">
+            
+            <label>Width [2]:</label>
+            <input type="number" id="width2" placeholder="0-100" min="0" max="100" step="1" value="100">
+            
+            <div class="volume-sliders">
+                <div class="volume-widget">
+                    <label>[1]</label>
+                    <input type="range" id="volume1" class="volume-slider-vertical" 
+                           min="0" max="100" value="100" orient="vertical">
+                    <span class="volume-value" id="volume1-value">100%</span>
+                </div>
+                <div class="volume-widget">
+                    <label>[2]</label>
+                    <input type="range" id="volume2" class="volume-slider-vertical" 
+                           min="0" max="100" value="100" orient="vertical">
+                    <span class="volume-value" id="volume2-value">100%</span>
+                </div>
+            </div>
         </div>
     </div>
     
     <script>
+        // Volume slider value updates
+        document.getElementById('volume1').addEventListener('input', function(e) {
+            const volumePercent = e.target.value;
+            document.getElementById('volume1-value').textContent = volumePercent + '%';
+            
+            // Set ISO synth volume (0-100% -> 0.0-1.0)
+            if (window.isoSynth) {
+                const volumeNormalized = volumePercent / 100;
+                isoSynth.setVolume(volumeNormalized);
+            }
+        });
+        
+        document.getElementById('volume2').addEventListener('input', function(e) {
+            const volumePercent = e.target.value;
+            document.getElementById('volume2-value').textContent = volumePercent + '%';
+            
+            // Set binaural synth volume (0-100% -> 0.0-1.0)
+            if (window.binauralSynth) {
+                const volumeNormalized = volumePercent / 100;
+                binauralSynth.setVolume(volumeNormalized);
+            }
+        });
+        
+        // Width control for ISO synth
+        document.getElementById('width1').addEventListener('input', function(e) {
+            const widthValue = parseInt(e.target.value);
+            
+            // Set ISO synth width (0-100)
+            if (window.isoSynth) {
+                isoSynth.setWidth(widthValue);
+            }
+        });
+        
+        // Width control for binaural synth
+        document.getElementById('width2').addEventListener('input', function(e) {
+            const widthValue = parseInt(e.target.value);
+            
+            // Set binaural synth width (0-100)
+            if (window.binauralSynth) {
+                binauralSynth.setWidth(widthValue);
+            }
+        });
+        
         // Basic console logging for now - will be expanded with Web Audio API
         function logJourneyMap() {
             const journeyMap = {
@@ -259,6 +390,7 @@
         let audioContext;
         let timeline;
         let isoSynth;
+        let binauralSynth;
         let isPlaying = false;
         
         // Create timeline segments from the existing type-ins
@@ -336,8 +468,31 @@
             const initialCarrierHz = parseFloat(document.getElementById('carrier_hz').value) || 110;
             isoSynth.setCarrierFrequency(initialCarrierHz);
             
+            // Set initial volume from slider [1]
+            const initialVolume1 = parseFloat(document.getElementById('volume1').value) / 100;
+            isoSynth.setVolume(initialVolume1);
+            
+            // Set initial width from width [1] input
+            const initialWidth1 = parseInt(document.getElementById('width1').value) || 100;
+            isoSynth.setWidth(initialWidth1);
+            
+            // Initialize Binaural Synth
+            window.binauralSynth = binauralSynth = new BinauralSynth(audioContext);
+            
+            // Set initial carrier frequency for binaural (same as ISO for now)
+            binauralSynth.setCarrierFrequency(initialCarrierHz);
+            
+            // Set initial volume from slider [2]
+            const initialVolume2 = parseFloat(document.getElementById('volume2').value) / 100;
+            binauralSynth.setVolume(initialVolume2);
+            
+            // Set initial width from width [2] input
+            const initialWidth2 = parseInt(document.getElementById('width2').value) || 100;
+            binauralSynth.setWidth(initialWidth2);
+            
             console.log('Timeline initialized with segments:', segments);
             console.log('ISO Synth initialized - audio pulse system ready');
+            console.log('Binaural Synth initialized - continuous tone system ready');
         }
         
         // Play/Stop button functionality - timeline and audio control
@@ -357,11 +512,15 @@
                 updateStatus(`Starting Timeline...`);
                 await initializeTimeline();
                 
-                // Read carrier frequency from HTML and set on ISO synth
+                // Read carrier frequency from HTML and set on both synths
                 const carrierHz = parseFloat(document.getElementById('carrier_hz').value) || 110;
                 isoSynth.setCarrierFrequency(carrierHz);
+                binauralSynth.setCarrierFrequency(carrierHz);
                 
                 timeline.start();
+                
+                // Start binaural synth (continuous tone)
+                binauralSynth.start();
                 
                 // Start status polling (separate from pulse events)
                 startTimelineTracking();
@@ -379,10 +538,15 @@
                     timeline = null; // Clear reference
                 }
                 
-                // **CRITICAL**: Dispose ISO synth to remove event listeners
+                // **CRITICAL**: Dispose synths to remove event listeners
                 if (isoSynth) {
                     isoSynth.dispose();
                     isoSynth = null; // Clear reference
+                }
+                
+                if (binauralSynth) {
+                    binauralSynth.dispose();
+                    binauralSynth = null; // Clear reference
                 }
                 
                 // Stop status polling
@@ -603,7 +767,8 @@
     <script src="widgets/synths/shared/transport/timeline_jm.js"></script>
     <script src="widgets/synths/shared/transport/timeline_listeners.js"></script>
     
-    <!-- Import ISO Synth System -->
+    <!-- Import Synth Systems -->
     <script src="widgets/synths/iso_synth.js"></script>
+    <script src="widgets/synths/binaural_synth.js"></script>
 </body>
 </html>
