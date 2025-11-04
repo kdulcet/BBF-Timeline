@@ -301,14 +301,14 @@
                 <div class="volume-widget">
                     <label>[1]</label>
                     <input type="range" id="volume1" class="volume-slider-vertical" 
-                           min="0" max="100" value="100" orient="vertical">
-                    <span class="volume-value" id="volume1-value">100%</span>
+                           min="0" max="100" value="0" orient="vertical">
+                    <span class="volume-value" id="volume1-value">0%</span>
                 </div>
                 <div class="volume-widget">
                     <label>[2]</label>
                     <input type="range" id="volume2" class="volume-slider-vertical" 
-                           min="0" max="100" value="0" orient="vertical">
-                    <span class="volume-value" id="volume2-value">0%</span>
+                           min="0" max="100" value="50" orient="vertical">
+                    <span class="volume-value" id="volume2-value">50%</span>
                 </div>
             </div>
         </div>
@@ -479,6 +479,9 @@
             // Initialize Binaural Synth
             window.binauralSynth = binauralSynth = new BinauralSynth(audioContext);
             
+            // Load binaural worklet
+            await binauralSynth.init();
+            
             // Set initial carrier frequency for binaural (same as ISO for now)
             binauralSynth.setCarrierFrequency(initialCarrierHz);
             
@@ -522,7 +525,7 @@
                 // PHASE 2: AudioWorklet Integration
                 // Load worklet module and create processor
                 try {
-                    await audioContext.audioWorklet.addModule('widgets/synths/worklets/iso_pulse_processor.js');
+                    await audioContext.audioWorklet.addModule('widgets/synths/iso_worklet.js');
                     console.log('[AudioWorklet] Module loaded successfully');
                     
                     // Create AudioWorkletNode with stereo output
