@@ -720,11 +720,9 @@
                 input.addEventListener('input', () => {
                     logJourneyMap();
                     
-                    // Restart timeline if currently playing to reflect new values
-                    if (isPlaying) {
-                        console.log('Timeline inputs changed, restarting timeline tracking');
-                        startTimelineTracking(); // Restart with new values
-                    }
+                    // DISABLED: Real-time timeline restart during playback
+                    // Play uses configuration from when play was clicked
+                    // Stop flushes everything, play again uses current configuration
                 });
             });
             
