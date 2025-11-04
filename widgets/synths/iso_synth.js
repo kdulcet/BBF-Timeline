@@ -24,12 +24,15 @@ class ISOSynth {
     this.pulseCounter = 0;
     
     // Constants from ISO_README.md
-    this.ATTACK_TIME = 0.007;   // 1ms
-    this.RELEASE_TIME = 0.025;  // 5ms
-    this.ENVELOPE_OVERHEAD = this.ATTACK_TIME + this.RELEASE_TIME; // 6ms total
+    this.ATTACK_TIME = 0.005;   // 1ms
+    this.RELEASE_TIME = 0.135;  // 5ms
+    this.ENVELOPE_OVERHEAD = this.ATTACK_TIME + this.RELEASE_TIME; // 
     
     // Carrier frequency (the actual sine wave pitch) - separate from pulse rate
     this.carrierFrequency = 440; // Default to A4 (440Hz)
+    
+    // Stereo width (0-100): 0 = mono (center), 100 = full stereo (L=-1, R=+1)
+    this.width = 100; // Default to full stereo separation
     
     // Stereo positioning - DEFAULT TO PINGPONG for obvious L/R separation
     this.stereoMode = 'pingpong'; // 'pingpong' or 'center'
@@ -86,23 +89,51 @@ class ISOSynth {
     this.channels.right.panNode = this.audioContext.createStereoPanner();
     this.channels.right.panNode.connect(this.masterGain);
     
-    // Set initial stereo positioning
-    this.setStereoMode(this.stereoMode);
+    // Set initial width
+    this.updateWidth();
   }
   
   /**
-   * Set stereo positioning mode
+   * Set stereo width (0-100)
+   * @param {number} width - Width value (0 = mono/center, 100 = full stereo)
+   */
+  setWidth(width) {
+    this.width = Math.max(0, Math.min(100, width));
+    this.updateWidth();
+    console.log(`ISO Synth width set to: ${this.width}%`);
+  }
+  
+  /**
+   * Update panner positions based on width
+   * @private
+   */
+  updateWidth() {
+    if (!this.channels.left.panNode || !this.channels.right.panNode) return;
+    
+    // Convert width 0-100 to pan values
+    // 0 = both center (0), 100 = full stereo (L=-1, R=+1)
+    const panValue = this.width / 100; // 0.0 to 1.0
+    
+    const currentTime = this.audioContext.currentTime;
+    
+    // Left channel: 0 width = 0 (center), 100 width = -1 (full left)
+    this.channels.left.panNode.pan.setValueAtTime(-panValue, currentTime);
+    
+    // Right channel: 0 width = 0 (center), 100 width = +1 (full right)
+    this.channels.right.panNode.pan.setValueAtTime(panValue, currentTime);
+  }
+  
+  /**
+   * Set stereo positioning mode (legacy - now uses width instead)
    * @param {string} mode - 'pingpong' or 'center'
    */
   setStereoMode(mode) {
     this.stereoMode = mode;
     
     if (mode === 'pingpong') {
-      this.channels.left.panNode.pan.value = -1.0;  // Fully left
-      this.channels.right.panNode.pan.value = 1.0;  // Fully right
+      this.setWidth(100);  // Full stereo
     } else {
-      this.channels.left.panNode.pan.value = 0.0;   // Center
-      this.channels.right.panNode.pan.value = 0.0;  // Center
+      this.setWidth(0);    // Mono/center
     }
     
     console.log(`Stereo mode: ${mode} (L=${this.channels.left.panNode.pan.value}, R=${this.channels.right.panNode.pan.value})`);
@@ -168,7 +199,7 @@ class ISOSynth {
     if (hz <= 0) return 0.1; // Fallback for invalid Hz
     
     const period = 1.0 / hz; // Period in seconds
-    const pulseDuration = period / 1.25; // 50% duty cycle
+    const pulseDuration = period / .5; // 
     
     // Ensure minimum duration for proper envelope
     return Math.max(pulseDuration, this.ENVELOPE_OVERHEAD);

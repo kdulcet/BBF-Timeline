@@ -519,6 +519,12 @@
                 
                 timeline.start();
                 
+                // TEST: Compile worklet schedule (currently just logging)
+                const pulseSchedule = timeline.compileForWorklet(audioContext.sampleRate, carrierHz);
+                console.log(`[TEST] Generated ${pulseSchedule.length} pulses`);
+                console.log('[TEST] First 3 pulses:', pulseSchedule.slice(0, 3));
+                console.log('[TEST] Last 3 pulses:', pulseSchedule.slice(-3));
+                
                 // Start binaural synth (continuous tone)
                 binauralSynth.start();
                 

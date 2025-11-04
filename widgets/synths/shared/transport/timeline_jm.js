@@ -190,6 +190,52 @@ class JMTimeline {
     return nextTime;
   }
 
+  /**
+   * Compile timeline to flat pulse array for AudioWorklet
+   * Uses existing transition-aware pulse calculation (_getHzAtTime, _getNextPulseTime)
+   * to generate pre-calculated schedule
+   * 
+   * @param {number} sampleRate - Sample rate (default: 48000)
+   * @param {number} carrierFrequency - Carrier frequency in Hz (default: 110)
+   * @returns {Array} Flat array of pulse events
+   */
+  compileForWorklet(sampleRate = 48000, carrierFrequency = 110) {
+    const pulses = [];
+    const totalDuration = this.getTotalDuration();
+    
+    let currentTime = 0;
+    let pulseId = 0;
+    let channel = 'left'; // Alternating L/R for ISO synth
+    
+    // Use existing pulse calculation logic
+    while (currentTime < totalDuration) {
+      const currentHz = this._getHzAtTime(currentTime);
+      const interval = calculate32nInterval(currentHz);
+      
+      // Convert to sample position
+      const samplePosition = Math.round(currentTime * sampleRate);
+      const durationSamples = Math.round(interval * 1.5 * sampleRate); // 1.5 duty cycle
+      
+      pulses.push({
+        samplePosition,
+        durationSamples,
+        channel,
+        carrierFrequency,
+        pulseId: pulseId++
+      });
+      
+      // Alternate channels for ISO synth
+      channel = channel === 'left' ? 'right' : 'left';
+      
+      // Calculate next pulse time using transition-aware logic
+      const nextTime = this._getNextPulseTime(currentTime, currentHz);
+      currentTime = nextTime;
+    }
+    
+    console.log(`[JMTimeline] Compiled ${pulses.length} pulses for AudioWorklet (${totalDuration.toFixed(2)}s)`);
+    return pulses;
+  }
+
   // ============================================================================
   // TRANSPORT CONTROL
   // ============================================================================
