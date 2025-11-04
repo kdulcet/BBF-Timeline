@@ -67,7 +67,8 @@ class ISOSynth {
     };
     
     this.setupAudioGraph();
-    this.setupEventListeners();
+    // DISABLED: Old node-based pulse generation (replaced by AudioWorklet)
+    // this.setupEventListeners();
     
     console.log('ISO Synth initialized - Alternating L/R architecture ready');
   }

@@ -307,8 +307,8 @@
                 <div class="volume-widget">
                     <label>[2]</label>
                     <input type="range" id="volume2" class="volume-slider-vertical" 
-                           min="0" max="100" value="100" orient="vertical">
-                    <span class="volume-value" id="volume2-value">100%</span>
+                           min="0" max="100" value="0" orient="vertical">
+                    <span class="volume-value" id="volume2-value">0%</span>
                 </div>
             </div>
         </div>
@@ -519,11 +519,43 @@
                 
                 timeline.start();
                 
-                // TEST: Compile worklet schedule (currently just logging)
-                const pulseSchedule = timeline.compileForWorklet(audioContext.sampleRate, carrierHz);
-                console.log(`[TEST] Generated ${pulseSchedule.length} pulses`);
-                console.log('[TEST] First 3 pulses:', pulseSchedule.slice(0, 3));
-                console.log('[TEST] Last 3 pulses:', pulseSchedule.slice(-3));
+                // PHASE 2: AudioWorklet Integration
+                // Load worklet module and create processor
+                try {
+                    await audioContext.audioWorklet.addModule('widgets/synths/worklets/iso_pulse_processor.js');
+                    console.log('[AudioWorklet] Module loaded successfully');
+                    
+                    // Create AudioWorkletNode with stereo output
+                    const workletNode = new AudioWorkletNode(audioContext, 'iso-pulse-processor', {
+                        outputChannelCount: [2]  // Stereo output (L + R channels)
+                    });
+                    
+                    // Listen for messages from worklet
+                    workletNode.port.onmessage = (event) => {
+                        console.log('[AudioWorklet] Message from processor:', event.data);
+                    };
+                    
+                    // Compile pulse schedule using timeline
+                    const pulseSchedule = timeline.compileForWorklet(audioContext.sampleRate, carrierHz);
+                    console.log(`[AudioWorklet] Compiled ${pulseSchedule.length} pulses for ${timeline.getTotalDuration().toFixed(2)}s timeline`);
+                    
+                    // Send schedule to worklet
+                    workletNode.port.postMessage({
+                        type: 'schedule',
+                        pulses: pulseSchedule
+                    });
+                    
+                    // Connect worklet to output
+                    workletNode.connect(audioContext.destination);
+                    
+                    console.log('[AudioWorklet] Pulse processor connected and ready');
+                    
+                    // Store reference for cleanup
+                    window.workletNode = workletNode;
+                    
+                } catch (error) {
+                    console.error('[AudioWorklet] Failed to initialize:', error);
+                }
                 
                 // Start binaural synth (continuous tone)
                 binauralSynth.start();
@@ -542,6 +574,13 @@
                 if (timeline) {
                     timeline.stop();
                     timeline = null; // Clear reference
+                }
+                
+                // Disconnect and cleanup AudioWorklet
+                if (window.workletNode) {
+                    window.workletNode.disconnect();
+                    window.workletNode = null;
+                    console.log('[AudioWorklet] Disconnected and cleaned up');
                 }
                 
                 // **CRITICAL**: Dispose synths to remove event listeners
