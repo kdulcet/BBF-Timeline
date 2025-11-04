@@ -1,0 +1,252 @@
+/* ==============================================
+   🔧 CSS-LEVEL HIDING PROTOCOLS - COL3DEBUGGER WIDGET  
+   ==============================================
+   Individual element control via data attributes:
+   
+   - data-debug-panel-bg="hidden|visible"            -> .col3debugger-widget (main container)
+   - data-debug-col3debugger-controls="hidden|visible" -> .col3debugger-top-row (header + buttons)
+   - data-debug-col3debugger-output="hidden|visible"   -> .col3debugger-bottom-row (console output)
+   
+   🎯 COL3DEBUGGER WIDGET STRUCTURE CODIFIED:
+   ==========================================
+   ROW 1 (.col3debugger-top-row):    Title + Control buttons = "Col3Debugger Controls"
+   ROW 2 (.col3debugger-bottom-row): Console output area = "Col3Debugger Output"
+   
+   CONTAINER (.col3debugger-widget): Dark terminal background widget
+   ========================================================
+   
+   Usage: Debug controller toggles individual data attributes on body
+   ============================================== */
+
+/* Individual element hiding rules */
+/* NOTE: col3debugger-widget should NOT be hidden by data-debug-panel-bg 
+   This attribute is for binaural panels only - col3debugger is always visible */
+
+[data-debug-col3debugger-controls="hidden"] .col3debugger-top-row {
+  display: none !important;
+}
+
+/* debug-output now directly in widget - no bottom-row container to hide */
+
+/* Default state - all visible */
+.col3debugger-widget .col3debugger-top-row {
+    display: flex;
+}
+
+/* #debug-output is now directly in widget - no bottom-row container *//* Show elements when explicitly visible */
+[data-debug-col3debugger-controls="visible"] .col3debugger-top-row {
+  display: flex !important;
+}
+
+[data-debug-col3debugger-output="visible"] .col3debugger-bottom-row {
+  display: flex !important;
+}
+
+/* END HIDING PROTOCOLS */
+
+/* Col3Debugger Widget specific styles */
+
+/* Debug panels should fill phone-emu completely - no margins */
+.phone-emu .col3debugger-widget {
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  /* Inherit phone-emu border-radius to prevent clipping over rounded corners */
+  border-radius: inherit !important;
+}
+
+/* 🔧 DEBUG PANEL MODE - Style Guide Compliant Single Override */
+/* Base .phone-emu provides standard padding, modifier removes it for debug panels */
+.phone-emu.phone-emu-debug {
+  padding: 0; /* Clean override - no !important cruft */
+}
+
+/* Debug panel boundary styling - match col1 orange color */
+[data-debug-boundaries="visible"] .col3debugger-widget {
+  outline: 2px solid #ff8800 !important; /* Same orange as col1 debug panel */
+}
+
+/* Target the main panel container that actually gets the green outline */
+[data-debug-boundaries="visible"] .control-panel-col3debugger {
+  outline: 2px solid #ff8800 !important; /* Same orange as col1 debug panel */
+}
+
+/* Sub-elements within col3debugger */
+[data-debug-boundaries="visible"] .col3debugger-top-row {
+  outline: 1px solid #ffff00 !important; /* Yellow for top row */
+}
+
+[data-debug-boundaries="visible"] .col3debugger-bottom-row {
+  outline: 1px solid #ff00ff !important; /* Magenta for bottom row */
+}
+.col3debugger-widget {
+    width: calc(100% - 4px); /* Account for thicker border to respect phone-emu boundaries */
+    height: 100%; /* Full height within phone-emu container */
+    margin: 0; /* No margins - use full phone-emu space */
+    background: #000000; /* Terminal background - high specificity replaces !important */
+    border: 2px solid #00FF88; /* Thicker green terminal border - matches col1debug */
+    border-radius: 0.75rem; /* Rounded edges for modern widget look */
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.11) !important; /* Reduced glow effect like col1debug */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Let parent phone-emu handle scrolling */
+    box-sizing: border-box; /* Include border in size calculations */
+    /* Widget-specific styling */
+    position: relative;
+    z-index: 100; /* Ensure col3debugger stays above background elements but below debug labels */
+    padding: 0.34rem 0.45rem 0.34rem 0.45rem; /* 10% reduction for tight fit */
+    flex: 1; /* Expand to fill parent */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow: hidden; /* Prevent overflow */
+    box-sizing: border-box; /* Include padding in size calculations */
+}
+
+/* Debug output area - widget-scoped with proper specificity */
+.col3debugger-widget #col3debug-output {
+    flex: 1;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    background: transparent; /* Let widget background show through */
+    color: #0f0;
+    padding: 4px; /* Minimal padding since widget has padding */
+    border: none; /* Remove border - widget provides border */
+    overflow-y: auto;
+    border-radius: 0; /* Remove radius - widget has radius */
+    font-size: 0.55rem; /* 2pts smaller for tighter display */
+    line-height: 1.2; /* Tighter line spacing */
+    font-family: monospace; /* Ensure monospace font */
+}
+
+/* Header row: Title and controls */
+.col3debugger-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.225rem; /* 10% reduction */
+    padding: 0.225rem 0.45rem 0.225rem 0.45rem; /* 10% reduction */
+    border-bottom: 2px solid #333; /* Thicker grey divider to match col1debug */
+    background: #000000; /* Force black background behind header */
+    flex-wrap: nowrap; /* Prevent wrapping */
+    overflow: hidden; /* Prevent chunky overflow */
+}
+
+.col3debugger-title {
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem; /* Larger title to match col1debug */
+    color: #ffffff; /* White text to match col1debug */
+    margin: 0;
+    font-weight: 400;
+    text-transform: capitalize;
+    background: #000000; /* Force black background behind title */
+    white-space: nowrap; /* Prevent title wrapping */
+    flex-shrink: 0; /* Don't shrink title */
+}
+
+/* 🎯 Evenly Distributed Button Header Subclass */
+.col3debugger-controls--distributed {
+    display: flex;
+    justify-content: center; /* Center the button group */
+    align-items: center;
+    gap: 0.375rem; /* Even spacing between buttons */
+    background: #000000; /* Force black background behind controls */
+    flex-shrink: 1; /* Allow controls to shrink if needed */
+    overflow: hidden; /* Prevent chunky overflow */
+}
+
+/* Console output area - now directly under top-row */
+
+/* 💚 Terminal Button Subclass - Extends action-btn with white outline */
+.col3debugger-widget .col3debugger-top-row .terminal-btn {
+    /* Override action-btn border with white terminal styling - highest specificity */
+    border: 1px solid #ffffff !important; /* White outline instead of green */
+    background: transparent !important; /* Transparent background */
+    color: #00ff00 !important; /* Green text */
+    font-family: 'Courier New', monospace; /* Terminal font - high specificity replaces !important */
+    font-size: 0.6rem !important; /* Compact size */
+    text-transform: capitalize !important; /* Capitalize text */
+    box-shadow: none !important; /* No shadows for terminal - high specificity replaces !important */
+    padding: 0.22rem 0.2rem !important; /* Reduced top/bottom padding - must be shorthand with !important */
+    margin-bottom: .3rem !important;
+    height: 1.25rem !important; /* 10% reduction */
+    min-width: 2.25rem !important; /* 10% reduction */
+    white-space: nowrap !important; /* Prevent text wrapping */
+}
+
+.col3debugger-widget .col3debugger-top-row .terminal-btn:hover {
+    background: #00ff00 !important; /* Green background on hover */
+    color: #000000 !important; /* Black text on hover */
+    transform: none !important; /* No transform for terminal - high specificity replaces !important */
+}
+
+/* Streamlined console output - no divs per response, just the facts */
+.col3debugger-widget .console-line {
+    margin-bottom: 0.05rem; /* Tighter spacing */
+    color: #00ff00;
+    white-space: pre-wrap;
+    /* font-size and font-family inherit from #col3debug-output parent - higher specificity */
+}
+
+.col3debugger-widget .console-line.level-error {
+    color: #ff4444;
+}
+
+.col3debugger-widget .console-line.level-warn {
+    color: #ffff00;
+}
+
+/* Timestamps for console output */
+.timestamp {
+    color: #666666;
+    font-size: 0.55rem; /* Much smaller timestamps for compact terminal */
+    margin-left: 0.5rem;
+}
+
+.welcome-message {
+    color: #00ff00;
+    font-style: italic;
+    margin: 0; /* Remove margins to eliminate top space */
+    padding: 0;
+    opacity: 0.8;
+    font-size: 0.6rem; /* Smaller welcome message for compact terminal */
+}
+
+.clear-message {
+    color: #00ff00;
+    font-style: italic;
+    margin: 0; /* Remove margins to eliminate top space */
+    padding: 0;
+    opacity: 0.8;
+    font-size: 0.6rem; /* Same styling as welcome message */
+}
+
+/* Linting toggle button */
+.lint-toggle-btn {
+    background: #001100;
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem; /* Match terminal-btn consistency */
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lint-toggle-btn:hover {
+    background: #003300;
+}
+
+.lint-toggle-btn.enabled {
+    background: #004400;
+    color: #88ff88;
+}
+
+/* Syntax highlighting classes for linted output */
+.css-selector { color: #88ff88; font-weight: bold; }
+.css-property { color: #ffff88; }
+.css-value { color: #ffff44; }
+.script-name { color: #ff44ff; font-weight: bold; }
+.file-path { color: #44ff44; text-decoration: underline; }
+.emoji-prefix { color: #ffff00; font-size: 1.1em; }
+.function-name { color: #ff8844; font-weight: bold; }
+.number { color: #88ff88; }

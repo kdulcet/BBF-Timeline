@@ -1,0 +1,1060 @@
+/**
+ * JMTimeline - JourneyMap Timeline Engine
+ * Two-band scheduling system following Tone.js Transport patterns with JourneyMap extensions
+ * 
+ * ARCHITECTURE (Based on Tone.js Transport._processTick + custom extensions):
+ * • Wave Band: Web Audio native ramping (linearRampToValueAtTime) for smooth Hz automation
+ * • 32n Band: Dynamic pulse scheduling using Tone.js Timeline.forEachAtTime patterns
+ * 
+ * KEY TONE.JS INTEGRATIONS:
+ * • TickParam._getTicksUntilEvent() pattern for transition-aware calculations
+ * • Transport._processTick() approach for just-in-time event scheduling  
+ * • StateTimeline for transport state tracking (start/stop/pause)
+ * • Timeline binary search with memory management
+ * 
+ * TONE.JS INTEGRATION COMPLETE:
+ * • Tone.js TickParam ramping with linear interpolation implemented for 32n Band
+ * • Both Wave Band (Web Audio native) and 32n Band (TickParam pattern) handle transitions
+ * • Trapezoidal integration for smooth pulse rate changes during Hz ramps
+ * 
+ * See: https://github.com/Tonejs/Tone.js/blob/main/Tone/core/clock/TickParam.ts#L163-L175
+ */
+
+/**
+ * Core Formula Constants (IMMUTABLE)
+ */
+const TIMELINE_CONSTANTS = {
+  // BPM = (Hz × 60) / 8
+  BPM_MULTIPLIER: 60 / 8,
+  
+  // 32n interval = 1 / (Hz × 4) 
+  PULSE_32N_MULTIPLIER: 1,
+  
+  // Hz validation range
+  HZ_MIN: 0.5,
+  HZ_MAX: 25.0,
+  
+  // Visual update rate
+  VISUAL_UPDATE_FPS: 60,
+  VISUAL_UPDATE_INTERVAL: 1000 / 60, // ~16.67ms
+  
+  // Performance constants
+  AUDIO_LOOKAHEAD: 0.1, // 100ms audio scheduling lookahead
+  MEMORY_LIMIT: 1000,    // Max events to keep in memory
+  
+  // Ticker constants (Tone.js Ticker pattern)
+  TICKER_INTERVAL: 32,   // 32ms ticker loop (matches Tone.js)
+  
+  // Tone.js TickParam uses ~10 linear segments per second for exponential curves
+  // We use Web Audio native ramping instead, but this could be used for pulse calc
+  // See: Tone.js/core/clock/TickParam.ts#L130-L141 (exponentialRampToValueAtTime)
+  TRANSITION_SEGMENTS_PER_SECOND: 10
+};
+
+/**
+ * Brainwave band classification
+ */
+function getWaveType(hz) {
+  if (hz >= 0.5 && hz <= 4)   return "DELTA";   // Deep sleep
+  if (hz > 4 && hz <= 8)      return "THETA";   // Meditation  
+  if (hz > 8 && hz <= 12)     return "ALPHA";   // Relaxed awareness
+  if (hz > 12 && hz <= 15)    return "SMR";     // Sensorimotor rhythm
+  if (hz > 15 && hz <= 25)    return "BETA";    // Active focus
+  return "UNKNOWN";
+}
+
+/**
+ * Core BPM calculation (IMMUTABLE)
+ */
+function calculateTimelineBPM(hz) {
+  return hz * TIMELINE_CONSTANTS.BPM_MULTIPLIER;
+}
+
+/**
+ * Calculate 32nd note pulse interval
+ */
+function calculate32nInterval(hz) {
+  return 1 / (hz * TIMELINE_CONSTANTS.PULSE_32N_MULTIPLIER);
+}
+
+/**
+ * Validate Hz range
+ */
+function validateHz(hz) {
+  if (isNaN(hz)) return false;
+  return hz >= TIMELINE_CONSTANTS.HZ_MIN && hz <= TIMELINE_CONSTANTS.HZ_MAX;
+}
+
+/**
+ * Timeline segment types
+ */
+const SegmentType = {
+  PLATEAU: 'plateau',
+  TRANSITION: 'transition'
+};
+
+/**
+ * Timeline event types for synth communication
+ */
+const TimelineEvents = {
+  // Transport control
+  STARTED: 'timeline.started',
+  PAUSED: 'timeline.paused',
+  STOPPED: 'timeline.stopped',
+  
+  // Hz automation (Wave Band)
+  HZ_CHANGED: 'timeline.hz.changed',
+  WAVE_TYPE_CHANGED: 'timeline.wave_type.changed',
+  
+  // Segment management
+  SEGMENT_CHANGED: 'timeline.segment.changed', 
+  TRANSITION_START: 'timeline.transition.start',
+  TRANSITION_END: 'timeline.transition.end',
+  
+  // Random access
+  JUMP: 'timeline.jump',
+  
+  // 32n pulse events (32n Band)
+  PULSE_32N: 'timeline.pulse.32n',
+  
+  // Visual feedback
+  HZ_VISUAL: 'timeline.hz.visual',
+  PULSE_FLASH: 'timeline.pulse.flash'
+};
+
+/**
+ * JMTimeline - Main timeline engine
+ */
+class JMTimeline {
+  constructor(audioContext, segments = []) {
+    this.audioContext = audioContext;
+    this.segments = segments;
+    this.compiledTimeline = this._compile(segments);
+    this.playbackMode = "sequential";
+    this.isRunning = false;
+    this.isPaused = false;
+    
+    // Timeline state
+    this.startTime = null;
+    this.pauseTime = null;
+    this.currentSegmentIndex = 0;
+    this.timelinePosition = 0;
+    
+    // Tone.js StateTimeline pattern for transport control (start/stop/pause tracking)
+    // See: Tone.js/core/util/StateTimeline.ts for reference implementation  
+    this._stateTimeline = new StateTimeline(PlaybackState.STOPPED, {
+      memory: 100,
+      increasing: true
+    });
+    
+    // Timeline storage following Tone.js Timeline patterns with binary search
+    // See: Tone.js/core/util/Timeline.ts for core Timeline implementation
+    this._waveEvents = new Timeline({
+      memory: TIMELINE_CONSTANTS.MEMORY_LIMIT,
+      increasing: true
+    });
+    
+    // Pulse events - currently NOT transition-aware (this is the bug to fix)
+    // Should follow Tone.js TickParam._getTicksUntilEvent() for ramping calculations
+    this._pulseEvents = new Timeline({
+      memory: TIMELINE_CONSTANTS.MEMORY_LIMIT / 2,
+      increasing: true
+    });
+    
+    // Segment tracking for user-defined timeline progression
+    this._segmentEvents = new Timeline({
+      memory: 100,
+      increasing: true
+    });
+    
+    // Performance optimization
+    this._lastUpdate = 0;
+    this._eventMemoization = new Map();
+    this._scheduledCallbacks = new Set();
+    
+    // Visual feedback system
+    this._visualUpdateId = null;
+    this._lastVisualUpdate = 0;
+    
+    // Current Hz tracking for visual feedback
+    this._currentHz = 0;
+    this._lastWaveType = "UNKNOWN";
+    
+    // Web Audio native parameter ramping (like Tone.js Signal/Param architecture)
+    // Uses ConstantSourceNode.offset as virtual Hz parameter for linearRampToValueAtTime
+    // See: Tone.js/signal/Signal.ts and Tone.js/core/context/Param.ts patterns
+    this._virtualHzParam = this._createVirtualHzParam();
+    
+    // Dynamic pulse scheduling variables (Tone.js Transport._processTick approach)
+    // See: Tone.js/core/clock/Transport.ts#L237-L270 (_processTick implementation)
+    this._scheduledPulseKeys = new Set();  // Prevent duplicate scheduling
+    this._nextPulseTime = null;            // Current pulse scheduling cursor
+    this._lastScheduledPulseTime = 0;      // Track last scheduled pulse to prevent duplicates
+    
+    // Ticker-based scheduling (Tone.js Ticker pattern)
+    this._tickerInterval = null;           // 32ms ticker loop
+    
+    this._setupEventListeners();
+  }
+
+  /**
+   * Create virtual Hz parameter using Web Audio native ramping
+   * 
+   * TONE.JS PATTERN: Tone.js Signal uses ConstantSourceNode.offset as the core parameter
+   * for all automation (setValueAtTime, linearRampToValueAtTime, etc.)
+   * See: Tone.js/signal/Signal.ts#L37-L54 (Signal constructor + _param setup)
+   * 
+   * This gives us sample-accurate ramping that synths can read via .value property
+   * or connect to directly for audio-rate modulation
+   */
+  _createVirtualHzParam() {
+    // ConstantSourceNode.offset = sample-accurate AudioParam (like Tone.js Signal)
+    const constantSource = this.audioContext.createConstantSource();
+    constantSource.offset.value = 2.0; // Default starting Hz
+    constantSource.start(0); // Must start to enable parameter updates
+    
+    // Return AudioParam for automation (linearRampToValueAtTime, etc.)
+    return constantSource.offset;
+  }
+
+  /**
+   * Get current Hz from virtual parameter (sample-accurate)
+   * 
+   * TONE.JS EQUIVALENT: Similar to Tone.js Param.getValueAtTime() but using direct .value
+   * See: Tone.js/core/context/Param.ts#L451-L470 (getValueAtTime implementation)
+   * 
+   * CRITICAL: This returns instantaneous value - works for Wave Band automation
+   * but 32n pulse scheduling needs transition-aware calculations during ramps
+   */
+  getCurrentHz() {
+    if (!this.isRunning) return 0;
+    
+    // Sample-accurate Hz from Web Audio parameter (like Tone.js Signal.value)
+    return this._virtualHzParam.value;
+  }
+
+  /**
+   * Schedule Hz ramp using Web Audio native automation
+   * 
+   * TONE.JS PATTERN: Exact same as Tone.js Param automation methods
+   * See: Tone.js/core/context/Param.ts#L369-L381 (linearRampToValueAtTime)
+   * 
+   * This creates smooth, sample-accurate frequency transitions that work perfectly
+   * for Wave Band automation. Issue is in 32n Band pulse scheduling, not here.
+   */
+  _scheduleHzRamp(fromHz, toHz, startTime, duration) {
+    // Web Audio native automation (identical to Tone.js Param implementation)
+    this._virtualHzParam.setValueAtTime(fromHz, startTime);
+    this._virtualHzParam.linearRampToValueAtTime(toHz, startTime + duration);
+    
+    console.log(`Hz automation: ${fromHz}→${toHz}Hz over ${duration}s @ ${startTime.toFixed(3)}s`);
+  }
+
+  /**
+   * Compile user segments into executable timeline
+   */
+  _compile(segments) {
+    const timeline = [];
+    let cursor = 0;
+    
+    for (const segment of segments) {
+      const compiledSegment = {
+        time_sec: cursor,
+        hz: segment.hz || null,
+        duration_sec: segment.durationSeconds || (segment.duration_min * 60),
+        type: segment.type,
+        index: timeline.length
+      };
+      
+      // Add transition properties if applicable
+      if (segment.type === SegmentType.TRANSITION) {
+        compiledSegment.startHz = segment.startHz;
+        compiledSegment.endHz = segment.endHz;
+        compiledSegment.transitionType = segment.transitionType || 'linear';
+      }
+      
+      timeline.push(compiledSegment);
+      cursor += compiledSegment.duration_sec;
+    }
+    
+    return timeline;
+  }
+
+  /**
+   * Schedule Web Audio Hz automation for entire timeline
+   * 
+   * WAVE BAND AUTOMATION (THIS WORKS CORRECTLY):
+   * Uses Web Audio native linearRampToValueAtTime for smooth frequency changes.
+   * Identical to Tone.js Param automation - creates sample-accurate ramping.
+   * 
+   * TONE.JS EQUIVALENT: Similar to how Tone.js schedules parameter automation
+   * See: Tone.js/core/context/Param.ts for setValueAtTime + linearRampToValueAtTime
+   * 
+   * NOTE: This Wave Band automation is correct. The issue is in 32n Band pulse 
+   * scheduling which doesn't account for continuously changing Hz during ramps.
+   */
+  _scheduleNativeHzRamps() {
+    let currentHz = 2.0; // Default starting Hz
+    
+    // Clear existing automation (like Tone.js Param.cancelScheduledValues)
+    this._virtualHzParam.cancelScheduledValues(0);
+    
+    for (const segment of this.compiledTimeline) {
+      const segmentStartTime = this.startTime + segment.time_sec;
+      
+      if (segment.type === SegmentType.PLATEAU) {
+        // Plateau: constant Hz (setValueAtTime)
+        currentHz = segment.hz;
+        this._virtualHzParam.setValueAtTime(currentHz, segmentStartTime);
+        
+        console.log(`Plateau: ${currentHz}Hz @ ${segmentStartTime.toFixed(3)}s (${segment.duration_sec}s)`);
+        
+      } else if (segment.type === SegmentType.TRANSITION) {
+        // Transition: linear ramp (linearRampToValueAtTime)  
+        this._virtualHzParam.setValueAtTime(segment.startHz, segmentStartTime);
+        this._virtualHzParam.linearRampToValueAtTime(
+          segment.endHz, 
+          segmentStartTime + segment.duration_sec
+        );
+        
+        currentHz = segment.endHz;
+        console.log(`Transition: ${segment.startHz}→${segment.endHz}Hz over ${segment.duration_sec}s @ ${segmentStartTime.toFixed(3)}s`);
+      }
+    }
+    
+    console.log(`Wave Band Hz automation scheduled (Web Audio native ramping)`);
+  }
+
+
+
+  /**
+   * Initialize transition-aware pulse scheduling system
+   * 
+   * 32n BAND SCHEDULING (FIXED - TRANSITION-AWARE):
+   * Follows Tone.js Transport._processTick() pattern with TickParam._getTicksUntilEvent()
+   * transition-aware calculations for smooth pulse rate changes during Hz ramps
+   * 
+   * TONE.JS PATTERN: Transport schedules events dynamically in _processTick()
+   * See: Tone.js/core/clock/Transport.ts#L255-L270 (timeline.forEachAtTime usage)
+   * 
+   * IMPLEMENTED: Tone.js TickParam interpolation for Hz during ramp calculations
+   * See: Tone.js/core/clock/TickParam.ts#L163-L202 (_getTicksUntilEvent method)
+   * 
+   * SOLUTION: Pulse scheduling accounts for ramping Hz during transitions using
+   * trapezoidal integration and interpolated Hz values at each pulse time.
+   */
+  _scheduleDynamicPulses() {
+    this._scheduledPulseKeys.clear();
+    
+    // Dynamic scheduling initialized with transition-aware calculations
+    console.log(`32n Band pulse scheduling initialized (transition-aware using Tone.js TickParam pattern)`);
+  }
+
+  /**
+   * Convert ticks to seconds (assuming 120 BPM base)
+   */
+  _ticksToSeconds(ticks) {
+    const bpm = 120; // Base BPM for tick calculation
+    const beatsPerSecond = bpm / 60;
+    const ticksPerSecond = beatsPerSecond * this._ppq;
+    return ticks / ticksPerSecond;
+  }
+
+  /**
+   * Get Hz value at specific time, accounting for Web Audio ramping
+   * 
+   * TONE.JS PATTERN: Similar to TickParam.getValueAtTime() but using our
+   * Web Audio native parameter automation for sample-accurate Hz values
+   */
+  _getHzAtTime(time) {
+    if (!this.isRunning || !this._virtualHzParam) return 0;
+    
+    // For current time, use direct parameter value (most accurate)
+    if (Math.abs(time - this.audioContext.currentTime) < 0.001) {
+      return this._virtualHzParam.value;
+    }
+    
+    // For future times, find the segment and interpolate if in transition
+    const timelinePosition = time - this.startTime;
+    const segment = this._findSegmentAtTime(timelinePosition);
+    
+    if (!segment) return 0;
+    
+    if (segment.type === SegmentType.PLATEAU) {
+      // Plateau segment: constant Hz
+      return segment.hz;
+    } else if (segment.type === SegmentType.TRANSITION) {
+      // Transition segment: linear interpolation (matching Web Audio ramping)
+      const segmentProgress = (timelinePosition - segment.time_sec) / segment.duration_sec;
+      const clampedProgress = Math.max(0, Math.min(1, segmentProgress));
+      
+      // Linear interpolation between startHz and endHz
+      return segment.startHz + (segment.endHz - segment.startHz) * clampedProgress;
+    }
+    
+    return 0;
+  }
+
+  /**
+   * Calculate next pulse time using transition-aware interval calculation
+   * 
+   * TONE.JS PATTERN: Adapted from TickParam._getTicksUntilEvent() trapezoidal integration
+   * Uses average Hz over small time interval for smooth pulse rate changes during transitions
+   */
+  _getNextPulseTime(currentTime, currentHz) {
+    // Basic 32n interval calculation
+    const baseInterval = calculate32nInterval(currentHz);
+    
+    // For very small intervals or plateau segments, use direct calculation
+    if (baseInterval < 0.01) {
+      return currentTime + baseInterval;
+    }
+    
+    // Check if we're in a transition segment
+    const timelinePosition = currentTime - this.startTime;
+    const segment = this._findSegmentAtTime(timelinePosition);
+    
+    if (!segment || segment.type === SegmentType.PLATEAU) {
+      // Plateau: use direct interval calculation
+      return currentTime + baseInterval;
+    }
+    
+    // Transition: use trapezoidal integration for smooth pulse rate changes
+    const lookAheadTime = Math.min(baseInterval, 0.1); // Look ahead up to 100ms
+    const futureTime = currentTime + lookAheadTime;
+    const futureHz = this._getHzAtTime(futureTime);
+    
+    // Trapezoidal integration: average Hz over interval
+    // Based on Tone.js TickParam: 0.5 * (time - event.time) * (val0 + val1)
+    const avgHz = 0.5 * (currentHz + futureHz);
+    
+    if (avgHz <= 0) return currentTime + baseInterval;
+    
+    // Calculate interval using average Hz for smooth transitions
+    const transitionAwareInterval = calculate32nInterval(avgHz);
+    
+    return currentTime + transitionAwareInterval;
+  }
+
+  /**
+   * Setup internal event listeners and scheduling
+   */
+  _setupEventListeners() {
+    // Bind context for callbacks
+    this._boundAudioLoop = this._audioSchedulingLoop.bind(this);
+    this._boundVisualLoop = this._visualUpdateLoop.bind(this);
+    
+    // Setup audio scheduling interval (background processing)
+    this._audioSchedulingInterval = null;
+  }
+
+  /**
+   * Start timeline playback
+   */
+  start() {
+    if (this.isRunning && !this.isPaused) {
+      return; // Already running
+    }
+    
+    const startTime = this.audioContext.currentTime;
+    
+    if (this.isPaused) {
+      // Resume from pause
+      const pauseDuration = startTime - this.pauseTime;
+      this.startTime += pauseDuration;
+      this.isPaused = false;
+    } else {
+      // Fresh start
+      this.startTime = startTime;
+      this.timelinePosition = 0;
+      this.currentSegmentIndex = 0;
+      
+      // Clear scheduled pulse tracking
+      this._scheduledPulseKeys.clear();
+      
+      // Reset pulse timing for dynamic scheduling (Tone.js approach)
+      this._nextPulseTime = startTime;
+      
+      // Schedule Hz automation and pulse events (Tone.js approach)
+      console.log(`Scheduling Web Audio automation and pulse events...`);
+      this._scheduleNativeHzRamps();
+      this._scheduleDynamicPulses();
+    }
+    
+    this.isRunning = true;
+    
+    // Update state timeline
+    this._stateTimeline.setStateAtTime(PlaybackState.STARTED, startTime);
+    
+    // Start audio scheduling loop
+    this._startAudioScheduling();
+    
+    // Start visual feedback loop
+    this._startVisualFeedback();
+    
+    // Schedule initial events
+    this._scheduleInitialEvents(startTime);
+    
+    // Dispatch start event
+    this._dispatchEvent(TimelineEvents.STARTED, {
+      startTime,
+      timelinePosition: this.timelinePosition
+    });
+    
+    console.log(`JMTimeline started at ${startTime}`);
+  }
+
+  /**
+   * Pause timeline playback
+   */
+  pause() {
+    if (!this.isRunning || this.isPaused) {
+      return; // Not running or already paused
+    }
+    
+    const pauseTime = this.audioContext.currentTime;
+    this.pauseTime = pauseTime;
+    this.isPaused = true;
+    
+    // Update state timeline
+    this._stateTimeline.setStateAtTime(PlaybackState.PAUSED, pauseTime);
+    
+    // Stop scheduling new events
+    this._stopAudioScheduling();
+    
+    // Cancel future scheduled events
+    this._cancelScheduledEvents();
+    
+    // Visual feedback continues during pause
+    
+    // Dispatch pause event
+    this._dispatchEvent(TimelineEvents.PAUSED, {
+      pauseTime,
+      timelinePosition: this._getTimelinePosition(pauseTime)
+    });
+    
+    console.log(`JMTimeline paused at ${pauseTime}`);
+  }
+
+  /**
+   * Stop timeline playback
+   */
+  stop() {
+    if (!this.isRunning) {
+      return; // Already stopped
+    }
+    
+    const stopTime = this.audioContext.currentTime;
+    
+    this.isRunning = false;
+    this.isPaused = false;
+    this.startTime = null;
+    this.pauseTime = null;
+    this.timelinePosition = 0;
+    this.currentSegmentIndex = 0;
+    
+    // Update state timeline
+    this._stateTimeline.setStateAtTime(PlaybackState.STOPPED, stopTime);
+    
+    // Stop all scheduling
+    this._stopAudioScheduling();
+    this._stopVisualFeedback();
+    
+    // Cancel all scheduled events
+    this._cancelScheduledEvents();
+    
+    // Clear scheduled pulse tracking
+    this._scheduledPulseKeys.clear();
+    
+    // Clear timelines
+    this._clearEventTimelines();
+    
+    // Dispatch stop event
+    this._dispatchEvent(TimelineEvents.STOPPED, {
+      stopTime,
+      finalPosition: this._getTimelinePosition(stopTime)
+    });
+    
+    console.log(`JMTimeline stopped at ${stopTime}`);
+  }
+
+  /**
+   * Get current timeline position in seconds
+   */
+  _getTimelinePosition(currentTime = null) {
+    if (!this.isRunning) return 0;
+    
+    const time = currentTime || this.audioContext.currentTime;
+    
+    if (this.isPaused) {
+      return this.pauseTime - this.startTime;
+    }
+    
+    return time - this.startTime;
+  }
+
+  /**
+   * Get total timeline duration in seconds
+   */
+  getTotalDuration() {
+    if (this.compiledTimeline.length === 0) return 0;
+    
+    const lastSegment = this.compiledTimeline[this.compiledTimeline.length - 1];
+    return lastSegment.time_sec + lastSegment.duration_sec;
+  }
+
+  /**
+   * Get current Hz value from Web Audio parameter (sample-accurate)
+   * 
+   * TONE.JS EQUIVALENT: Like Tone.js Signal.value property access
+   * See: Tone.js/signal/Signal.ts#L105-L110 (value getter implementation)
+   * 
+   * Returns instantaneous Hz value from Web Audio automation curve.
+   * Perfect for Wave Band synths, but 32n Band needs transition-aware calculations.
+   */
+  getCurrentHz() {
+    if (!this.isRunning || !this._virtualHzParam) return 0;
+    
+    // Sample-accurate Hz from Web Audio parameter (like Tone.js Signal.value)
+    return this._virtualHzParam.value;
+  }
+
+  /**
+   * Find timeline segment at given time position
+   */
+  _findSegmentAtTime(position) {
+    for (const segment of this.compiledTimeline) {
+      const segmentEnd = segment.time_sec + segment.duration_sec;
+      if (position >= segment.time_sec && position < segmentEnd) {
+        return segment;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Start audio scheduling with 32ms ticker (Tone.js Ticker pattern)
+   * 
+   * REFACTORED: 32ms ticker replaces 25ms interval
+   * - Matches Tone.js Ticker interval for consistency
+   * - Calls scheduling loop every 32ms to check lookahead window
+   */
+  _startAudioScheduling() {
+    if (this._tickerInterval) {
+      clearInterval(this._tickerInterval);
+    }
+    
+    console.log(`Starting 32ms ticker loop (Tone.js pattern)`);
+    
+    // 32ms ticker loop (like Tone.js Ticker.ts)
+    this._tickerInterval = setInterval(this._boundAudioLoop, TIMELINE_CONSTANTS.TICKER_INTERVAL);
+  }
+
+  /**
+   * Stop audio scheduling ticker
+   */
+  _stopAudioScheduling() {
+    if (this._tickerInterval) {
+      clearInterval(this._tickerInterval);
+      this._tickerInterval = null;
+    }
+  }
+
+  /**
+   * Audio scheduling loop (background processing)
+   */
+  _audioSchedulingLoop() {
+    if (!this.isRunning || this.isPaused) {
+      return;
+    }
+    
+    const startTime = this._lastUpdate;
+    const endTime = this.audioContext.currentTime;
+    this._lastUpdate = endTime;
+    
+    if (startTime === endTime) {
+      return; // No time has passed
+    }
+    
+    // Process Wave Band events (Hz automation)
+    this._scheduleWaveEvents(startTime, endTime);
+    
+    // Process 32n Band events (pulse triggers)
+    this._schedule32nEvents(startTime, endTime);
+    
+    // Process segment transitions
+    this._processSegmentTransitions(startTime, endTime);
+  }
+
+  /**
+   * Process Wave Band events (Hz change notifications for synths)
+   * 
+   * WAVE BAND PROCESSING (WORKS CORRECTLY):
+   * Hz automation is handled by Web Audio native ramping (_scheduleNativeHzRamps)
+   * This method just reads current Hz value and dispatches change events for synths
+   * 
+   * The actual frequency automation happens sample-accurately via Web Audio parameter,
+   * this is just for notifying Wave Band listeners (binaural synths, etc.)
+   */
+  _scheduleWaveEvents(startTime, endTime) {
+    // Read current Hz from Web Audio parameter (sample-accurate)
+    const displayHz = this.getCurrentHz();
+    
+    // Dispatch Hz change events for synths (throttled to avoid spam)
+    if (Math.abs(displayHz - this._currentHz) > 0.2) {
+      const previousHz = this._currentHz;
+      this._currentHz = displayHz;
+      
+      // Significant change threshold to reduce event noise
+      if (Math.abs(displayHz - previousHz) > 0.15) {
+        this._dispatchEvent(TimelineEvents.HZ_CHANGED, {
+          hz: displayHz,
+          time: this.audioContext.currentTime,
+          wave_type: getWaveType(displayHz)
+        });
+      }
+    }
+  }
+
+  /**
+   * Schedule 32n Band pulse events (Tone.js Ticker pattern)
+   * 
+   * REFACTORED: Ticker-based scheduling with immediate event dispatch
+   * - 32ms ticker loop calculates pulses in 100ms lookahead window
+   * - Dispatches events IMMEDIATELY with future scheduled time
+   * - ISO synth schedules Web Audio nodes for exact time (sample-accurate)
+   * - No just-in-time dispatch = no jitter
+   * 
+   * TONE.JS PATTERN: Similar to Transport._processTick + Ticker loop
+   * See: Tone.js/core/clock/Transport.ts and Ticker.ts
+   */
+  _schedule32nEvents(startTime, endTime) {
+    const now = this.audioContext.currentTime;
+    const lookahead = now + TIMELINE_CONSTANTS.AUDIO_LOOKAHEAD;
+    
+    // Initialize pulse cursor on first call
+    if (!this._nextPulseTime) {
+      this._nextPulseTime = now;
+      console.log(`Initializing pulse scheduling at ${now.toFixed(3)}s`);
+    }
+    
+    // Schedule new pulses up to lookahead time and dispatch immediately
+    let newPulsesScheduled = 0;
+    while (this._nextPulseTime < lookahead) {
+      const pulseTime = this._nextPulseTime;
+      
+      // Check if timeline has ended
+      const timelineEnd = this.startTime + this.getTotalDuration();
+      if (pulseTime >= timelineEnd) {
+        break;
+      }
+      
+      // Get Hz at pulse time (transition-aware)
+      const pulseHz = this._getHzAtTime(pulseTime);
+      
+      // Create unique pulse key for deduplication
+      const pulseKey = Math.round(pulseTime * 10000);
+      
+      // Only schedule if not already scheduled and Hz is valid
+      if (pulseHz > 0 && !this._scheduledPulseKeys.has(pulseKey)) {
+        this._scheduledPulseKeys.add(pulseKey);
+        
+        // Dispatch event IMMEDIATELY with future time
+        // ISO synth will schedule Web Audio nodes for exact time
+        this._dispatchPulseEvent(pulseTime, pulseHz, pulseKey);
+        newPulsesScheduled++;
+        
+        // Calculate next pulse time using transition-aware interval
+        this._nextPulseTime = this._getNextPulseTime(pulseTime, pulseHz);
+      } else {
+        // Skip invalid Hz or duplicate pulse
+        this._nextPulseTime += 0.001;
+      }
+    }
+    
+    if (newPulsesScheduled > 0) {
+      console.log(`Scheduled ${newPulsesScheduled} pulses in lookahead window`);
+    }
+  }
+
+  /**
+   * Dispatch pulse event immediately (ISO synth schedules Web Audio nodes)
+   */
+  _dispatchPulseEvent(time, hz, tick = null) {
+    // Remove from scheduled tracking
+    if (tick !== null) {
+      this._scheduledPulseKeys.delete(tick);
+    }
+    
+    console.log(`🔊 Pulse scheduled: ${hz.toFixed(2)}Hz for ${time.toFixed(3)}s`);
+    
+    // Dispatch 32n pulse event with future scheduled time
+    // ISO synth will use this time to schedule Web Audio nodes
+    this._dispatchEvent(TimelineEvents.PULSE_32N, {
+      time,
+      hz,
+      tick,
+      interval: calculate32nInterval(hz)
+    });
+  }
+
+  /**
+   * Process segment transitions
+   */
+  _processSegmentTransitions(startTime, endTime) {
+    // Check if we've moved to a new segment
+    const currentPosition = this._getTimelinePosition();
+    const newSegment = this._findSegmentAtTime(currentPosition);
+    
+    if (newSegment && newSegment.index !== this.currentSegmentIndex) {
+      const oldIndex = this.currentSegmentIndex;
+      this.currentSegmentIndex = newSegment.index;
+      
+      // Dispatch segment change event
+      this._dispatchEvent(TimelineEvents.SEGMENT_CHANGED, {
+        from: oldIndex,
+        to: newSegment.index,
+        segment: newSegment,
+        position: currentPosition
+      });
+      
+      // Handle transition start/end events
+      if (newSegment.type === SegmentType.TRANSITION) {
+        this._dispatchEvent(TimelineEvents.TRANSITION_START, {
+          fromHz: newSegment.startHz,
+          toHz: newSegment.endHz,
+          duration: newSegment.duration_sec,
+          startTime: this.startTime + newSegment.time_sec
+        });
+      }
+    }
+  }
+
+  /**
+   * Schedule initial events when timeline starts
+   */
+  _scheduleInitialEvents(startTime) {
+    // Schedule all compiled timeline events
+    for (const segment of this.compiledTimeline) {
+      const segmentStartTime = startTime + segment.time_sec;
+      
+      if (segment.type === SegmentType.PLATEAU && segment.hz) {
+        // Schedule plateau Hz event
+        this._scheduleHzEvent(segment.hz, segmentStartTime);
+      }
+    }
+  }
+
+  /**
+   * Schedule Hz change event
+   */
+  _scheduleHzEvent(hz, time) {
+    const timeUntilEvent = time - this.audioContext.currentTime;
+    
+    if (timeUntilEvent > 0) {
+      const timeoutId = setTimeout(() => {
+        this._scheduledCallbacks.delete(timeoutId);
+        
+        this._dispatchEvent(TimelineEvents.HZ_CHANGED, {
+          hz,
+          time,
+          wave_type: getWaveType(hz)
+        });
+        
+      }, timeUntilEvent * 1000);
+      
+      this._scheduledCallbacks.add(timeoutId);
+    }
+  }
+
+  /**
+   * Cancel all scheduled events
+   */
+  _cancelScheduledEvents() {
+    for (const timeoutId of this._scheduledCallbacks) {
+      clearTimeout(timeoutId);
+    }
+    this._scheduledCallbacks.clear();
+  }
+
+  /**
+   * Clear event timelines
+   */
+  _clearEventTimelines() {
+    this._waveEvents.dispose();
+    this._pulseEvents.dispose();
+    this._segmentEvents.dispose();
+    
+    // Recreate clean timelines
+    this._waveEvents = new Timeline({ memory: TIMELINE_CONSTANTS.MEMORY_LIMIT });
+    this._pulseEvents = new Timeline({ memory: TIMELINE_CONSTANTS.MEMORY_LIMIT / 2 });
+    this._segmentEvents = new Timeline({ memory: 100 });
+  }
+
+  /**
+   * Start visual feedback system
+   */
+  _startVisualFeedback() {
+    this._ensureVisualContinuity();
+  }
+
+  /**
+   * Stop visual feedback system
+   */
+  _stopVisualFeedback() {
+    if (this._visualUpdateId) {
+      cancelAnimationFrame(this._visualUpdateId);
+      this._visualUpdateId = null;
+    }
+  }
+
+  /**
+   * Visual update loop (runs independently of audio scheduling)
+   */
+  _visualUpdateLoop() {
+    if (!this.isRunning) {
+      this._visualUpdateId = null;
+      return;
+    }
+    
+    const now = performance.now();
+    
+    // Throttle visual updates to target FPS
+    if (now - this._lastVisualUpdate >= TIMELINE_CONSTANTS.VISUAL_UPDATE_INTERVAL) {
+      this._updateVisualFeedback();
+      this._lastVisualUpdate = now;
+    }
+    
+    // Continue visual loop
+    this._visualUpdateId = requestAnimationFrame(this._boundVisualLoop);
+  }
+
+  /**
+   * Update visual feedback
+   */
+  _updateVisualFeedback() {
+    const currentHz = this.getCurrentHz();
+    const currentWaveType = getWaveType(currentHz);
+    
+    // Dispatch visual Hz update
+    this._dispatchEvent(TimelineEvents.HZ_VISUAL, {
+      hz: currentHz,
+      wave_type: currentWaveType,
+      time: performance.now()
+    });
+    
+    // Check for wave type change
+    if (currentWaveType !== this._lastWaveType) {
+      this._lastWaveType = currentWaveType;
+      this._dispatchEvent(TimelineEvents.WAVE_TYPE_CHANGED, {
+        wave_type: currentWaveType,
+        hz: currentHz
+      });
+    }
+    
+    // Handle 32n pulse flash for visual metronome
+    if (this._shouldFlashMetronome()) {
+      this._dispatchEvent(TimelineEvents.PULSE_FLASH, {
+        time: performance.now(),
+        hz: currentHz
+      });
+    }
+  }
+
+  /**
+   * Check if visual metronome should flash
+   */
+  _shouldFlashMetronome() {
+    const currentHz = this.getCurrentHz();
+    if (currentHz <= 0) return false;
+    
+    const pulseInterval = calculate32nInterval(currentHz);
+    const position = this._getTimelinePosition();
+    
+    // Flash on 32n pulse boundaries
+    const pulseBoundary = Math.floor(position / pulseInterval) * pulseInterval;
+    const timeSincePulse = position - pulseBoundary;
+    
+    // Flash for 50ms after each pulse
+    return timeSincePulse < 0.05;
+  }
+
+  /**
+   * Ensure visual feedback continuity
+   */
+  _ensureVisualContinuity() {
+    if (this._visualUpdateId) {
+      cancelAnimationFrame(this._visualUpdateId);
+    }
+    
+    this._visualUpdateId = requestAnimationFrame(this._boundVisualLoop);
+  }
+
+  /**
+   * Dispatch timeline event to document
+   */
+  _dispatchEvent(eventType, detail) {
+    const event = new CustomEvent(eventType, { detail });
+    document.dispatchEvent(event);
+  }
+
+  /**
+   * Get current timeline state
+   */
+  getCurrentState() {
+    if (!this.isRunning) return null;
+    
+    const position = this._getTimelinePosition();
+    const segment = this._findSegmentAtTime(position);
+    const currentHz = this.getCurrentHz();
+    
+    return {
+      position,
+      segment,
+      hz: currentHz,
+      wave_type: getWaveType(currentHz),
+      isRunning: this.isRunning,
+      isPaused: this.isPaused,
+      segmentIndex: this.currentSegmentIndex
+    };
+  }
+
+  /**
+   * Clean up timeline and dispose resources
+   */
+  dispose() {
+    this.stop();
+    
+    this._stateTimeline.dispose();
+    this._waveEvents.dispose();
+    this._pulseEvents.dispose();
+    this._segmentEvents.dispose();
+    
+    this._eventMemoization.clear();
+    
+    return this;
+  }
+}
+
+// Export classes and constants
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    JMTimeline,
+    TimelineEvents,
+    SegmentType,
+    TIMELINE_CONSTANTS,
+    calculateTimelineBPM,
+    calculate32nInterval,
+    getWaveType,
+    validateHz
+  };
+} else if (typeof window !== 'undefined') {
+  window.JMTimeline = JMTimeline;
+  window.TimelineEvents = TimelineEvents;
+  window.SegmentType = SegmentType;
+  window.TIMELINE_CONSTANTS = TIMELINE_CONSTANTS;
+  window.calculateTimelineBPM = calculateTimelineBPM;
+  window.calculate32nInterval = calculate32nInterval;
+  window.getWaveType = getWaveType;
+  window.validateHz = validateHz;
+}

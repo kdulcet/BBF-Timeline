@@ -1,0 +1,99 @@
+/* ==============================================
+   🎮 TRANSPORT WIDGET STYLES
+   ==============================================
+   Widget-specific styles for transport controls
+   Following AuraMatrix CSS architecture
+   ============================================== */
+
+/* === Transport Controls Container === */
+.transport-controls {
+  margin: 0;
+  margin-top: 0.25em; /* Reduced from .75em for tighter spacing */
+  padding: 0;
+  display: flex;
+  gap: 0.6em;
+  justify-content: center;
+}
+
+/* === Transport Button Styling === */
+/* Transport buttons use ui-base for consistent styling with other widgets */
+.transport-controls .transport-btn.ui-base {
+  /* All visual styling inherited from ui-base */
+  /* Aggressively remove ALL text effects */
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 !important;
+  -webkit-text-stroke-width: 0 !important;
+  -webkit-text-stroke-color: transparent !important;
+  /* Standard ui-base button sizing */
+  padding: 0 0.8em;
+  min-width: 7rem;
+  white-space: nowrap;
+}
+
+/* Consistent sizing for play and x60 buttons */
+.transport-controls .transport-play,
+.transport-controls .transport-x60 {
+  width: 5ch; /* 5 characters wide */
+  min-width: 5ch;
+  text-align: center;
+}
+
+/* Also target transport buttons without ui-base class */
+.transport-controls .transport-btn {
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 !important;
+  -webkit-text-stroke-width: 0 !important;
+  -webkit-text-stroke-color: transparent !important;
+}
+
+/* === SVG Icon Support === */
+/* Higher specificity to override ui_elements.css */
+#transport-panel-container .transport-controls #transport-play {
+  color: inherit; /* Override transparent color */
+}
+
+#transport-panel-container .transport-controls #transport-play::before {
+  display: none;
+  content: none;
+  border: none;
+}
+
+/* Hide triangle when playing */
+.transport-controls .transport-play.playing::before {
+  display: none;
+}
+
+/* Stop square when playing - matches ui_elements.css but with higher specificity */
+.transport-controls .transport-play.playing::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 0.875rem;
+  height: 0.875rem;
+  background: #000;
+  border-radius: 0.125rem;
+}
+
+/* Hide SVG when playing to show stop square (defined in ui_elements.css) */
+.transport-controls .transport-play.playing img {
+  display: none;
+}
+
+/* ==============================================
+   🔧 CSS-LEVEL DEBUG VISIBILITY - TRANSPORT  
+   ==============================================
+   Part of the AuraMatrix debug system
+   Controlled by data-debug-transport attribute 
+   ============================================== */
+
+/* Hide transport controls when debug attribute set */
+[data-debug-transport="hidden"] #transport-panel-container {
+  display: none !important;
+}
+
+/* Show transport boundaries when boundaries are visible AND transport debug is active */
+[data-debug-boundaries="visible"][data-debug-transport="visible"] #transport-panel-container {
+  outline: 1px solid #ff8800 !important;
+}

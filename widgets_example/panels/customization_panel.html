@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraMatrix Customization Panel</title>
+    <link rel="stylesheet" href="../../styles/base.css">
+    <link rel="stylesheet" href="../../styles/layout.css">
+    <link rel="stylesheet" href="../../styles/customization.css">
+
+</head>
+<body>
+    <div class="customization-panel" id="customizationPanel">
+        <header class="panel-header">
+            <h2 class="panel-title">
+                <span class="icon">🎨</span>
+                Personalization Center
+            </h2>
+            <button class="close-button" id="closePanel" aria-label="Close customization panel">
+                <span aria-hidden="true">×</span>
+            </button>
+        </header>
+
+        <div class="panel-content">
+            <!-- Preference Learning Status -->
+            <section class="learning-status" id="learningStatus">
+                <h3>Your Preference Profile</h3>
+                <div class="profile-summary">
+                    <div class="interaction-count">
+                        <span class="count" id="interactionCount">0</span>
+                        <span class="label">interactions tracked</span>
+                    </div>
+                    <div class="learning-phase">
+                        <span class="phase-name" id="learningPhase">Initial Phase</span>
+                        <div class="phase-progress">
+                            <div class="progress-bar" id="learningProgress"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="confidence-scores">
+                    <h4>Confidence Levels</h4>
+                    <div class="confidence-grid">
+                        <div class="confidence-item">
+                            <span class="category">Colors</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="colorConfidence"></div>
+                            </div>
+                            <span class="percentage" id="colorPercentage">0%</span>
+                        </div>
+                        <div class="confidence-item">
+                            <span class="category">Layout</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="layoutConfidence"></div>
+                            </div>
+                            <span class="percentage" id="layoutPercentage">0%</span>
+                        </div>
+                        <div class="confidence-item">
+                            <span class="category">Interaction</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="interactionConfidence"></div>
+                            </div>
+                            <span class="percentage" id="interactionPercentage">0%</span>
+                        </div>
+                        <div class="confidence-item">
+                            <span class="category">Accessibility</span>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="accessibilityConfidence"></div>
+                            </div>
+                            <span class="percentage" id="accessibilityPercentage">0%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Manual Overrides -->
+            <section class="manual-overrides">
+                <h3>Manual Customization</h3>
+                
+                <!-- Color Scheme -->
+                <div class="customization-group">
+                    <h4>Color Scheme</h4>
+                    <div class="color-options">
+                        <div class="color-option" data-scheme="neutral">
+                            <div class="color-preview neutral-preview"></div>
+                            <span class="option-name">Neutral</span>
+                            <span class="option-desc">Professional & universally appealing</span>
+                        </div>
+                        <div class="color-option" data-scheme="vibrant">
+                            <div class="color-preview vibrant-preview"></div>
+                            <span class="option-name">Vibrant</span>
+                            <span class="option-desc">High-energy colors for creative work</span>
+                        </div>
+                        <div class="color-option" data-scheme="pastel">
+                            <div class="color-preview pastel-preview"></div>
+                            <span class="option-name">Pastel</span>
+                            <span class="option-desc">Soft, calming colors</span>
+                        </div>
+                        <div class="color-option" data-scheme="dark">
+                            <div class="color-preview dark-preview"></div>
+                            <span class="option-name">Dark Mode</span>
+                            <span class="option-desc">Dark background with light text</span>
+                        </div>
+                        <div class="color-option" data-scheme="high-contrast">
+                            <div class="color-preview high-contrast-preview"></div>
+                            <span class="option-name">High Contrast</span>
+                            <span class="option-desc">Enhanced contrast for visibility</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Typography -->
+                <div class="customization-group">
+                    <h4>Typography</h4>
+                    <div class="typography-controls">
+                        <div class="control-row">
+                            <label for="fontFamily">Font Family</label>
+                            <select id="fontFamily" name="fontFamily">
+                                <option value="system">System Default</option>
+                                <option value="serif">Serif (Georgia, Times)</option>
+                                <option value="sans-serif">Sans-serif (Arial, Helvetica)</option>
+                                <option value="monospace">Monospace (Consolas, Monaco)</option>
+                                <option value="accessible">High Readability (Verdana, Tahoma)</option>
+                            </select>
+                        </div>
+                        <div class="control-row">
+                            <label for="fontSize">Font Size</label>
+                            <input type="range" id="fontSize" name="fontSize" 
+                                   min="12" max="24" value="16" step="1">
+                            <span class="value-display" id="fontSizeValue">16px</span>
+                        </div>
+                        <div class="control-row">
+                            <label for="lineHeight">Line Height</label>
+                            <input type="range" id="lineHeight" name="lineHeight" 
+                                   min="1.0" max="2.0" value="1.5" step="0.1">
+                            <span class="value-display" id="lineHeightValue">1.5</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Layout Density -->
+                <div class="customization-group">
+                    <h4>Layout Density</h4>
+                    <div class="density-options">
+                        <div class="density-option" data-density="sparse">
+                            <div class="density-preview sparse-preview"></div>
+                            <span class="option-name">Sparse</span>
+                            <span class="option-desc">Lots of white space, minimal</span>
+                        </div>
+                        <div class="density-option" data-density="balanced">
+                            <div class="density-preview balanced-preview"></div>
+                            <span class="option-name">Balanced</span>
+                            <span class="option-desc">Moderate information density</span>
+                        </div>
+                        <div class="density-option" data-density="dense">
+                            <div class="density-preview dense-preview"></div>
+                            <span class="option-name">Dense</span>
+                            <span class="option-desc">Information-rich layouts</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Accessibility -->
+                <div class="customization-group">
+                    <h4>Accessibility</h4>
+                    <div class="accessibility-controls">
+                        <div class="control-toggle">
+                            <input type="checkbox" id="highContrast" name="highContrast">
+                            <label for="highContrast">High Contrast Mode</label>
+                            <span class="toggle-desc">Enhanced contrast for better visibility</span>
+                        </div>
+                        <div class="control-toggle">
+                            <input type="checkbox" id="largeText" name="largeText">
+                            <label for="largeText">Large Text</label>
+                            <span class="toggle-desc">Increase text size for readability</span>
+                        </div>
+                        <div class="control-toggle">
+                            <input type="checkbox" id="reducedMotion" name="reducedMotion">
+                            <label for="reducedMotion">Reduce Motion</label>
+                            <span class="toggle-desc">Minimize animations and transitions</span>
+                        </div>
+                        <div class="control-toggle">
+                            <input type="checkbox" id="keyboardNavigation" name="keyboardNavigation">
+                            <label for="keyboardNavigation">Enhanced Keyboard Navigation</label>
+                            <span class="toggle-desc">Visible focus indicators and shortcuts</span>
+                        </div>
+                        <div class="control-toggle">
+                            <input type="checkbox" id="extendedTimeouts" name="extendedTimeouts">
+                            <label for="extendedTimeouts">Extended Timeouts</label>
+                            <span class="toggle-desc">More time for interactions</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Interaction Preferences -->
+                <div class="customization-group">
+                    <h4>Interaction Style</h4>
+                    <div class="interaction-options">
+                        <div class="interaction-option" data-style="keyboard">
+                            <span class="option-icon">⌨️</span>
+                            <span class="option-name">Keyboard First</span>
+                            <span class="option-desc">Prioritize keyboard shortcuts</span>
+                        </div>
+                        <div class="interaction-option" data-style="mouse">
+                            <span class="option-icon">🖱️</span>
+                            <span class="option-name">Mouse First</span>
+                            <span class="option-desc">Optimize for mouse interaction</span>
+                        </div>
+                        <div class="interaction-option" data-style="touch">
+                            <span class="option-icon">👆</span>
+                            <span class="option-name">Touch Friendly</span>
+                            <span class="option-desc">Large touch targets</span>
+                        </div>
+                        <div class="interaction-option" data-style="balanced">
+                            <span class="option-icon">⚖️</span>
+                            <span class="option-name">Balanced</span>
+                            <span class="option-desc">Adapt to current input method</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Learning Controls -->
+            <section class="learning-controls">
+                <h3>Learning System</h3>
+                <div class="control-buttons">
+                    <button class="control-button" id="pauseLearning">
+                        <span class="button-icon">⏸️</span>
+                        Pause Learning
+                    </button>
+                    <button class="control-button" id="viewProfile">
+                        <span class="button-icon">👤</span>
+                        View Full Profile
+                    </button>
+                    <button class="control-button" id="exportPrefs">
+                        <span class="button-icon">📤</span>
+                        Export Preferences
+                    </button>
+                    <button class="control-button" id="importPrefs">
+                        <span class="button-icon">📥</span>
+                        Import Preferences
+                    </button>
+                    <button class="control-button secondary" id="resetPrefs">
+                        <span class="button-icon">🔄</span>
+                        Reset to Defaults
+                    </button>
+                </div>
+            </section>
+
+            <!-- Preview Area -->
+            <section class="preview-area" id="previewArea">
+                <h3>Live Preview</h3>
+                <div class="preview-content">
+                    <div class="preview-header">
+                        <h4>Sample Interface</h4>
+                        <p>This preview shows how your customizations will look</p>
+                    </div>
+                    <div class="preview-controls">
+                        <button class="preview-button primary">Primary Action</button>
+                        <button class="preview-button secondary">Secondary Action</button>
+                    </div>
+                    <div class="preview-text">
+                        <p>This is sample text that demonstrates your typography choices. 
+                           It shows how the font family, size, and line height settings 
+                           will appear in the actual interface.</p>
+                        <ul>
+                            <li>List item with current styling</li>
+                            <li>Another item to show consistency</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <footer class="panel-footer">
+            <div class="footer-info">
+                <span class="last-updated">Last updated: <span id="lastUpdated">Never</span></span>
+            </div>
+            <div class="footer-actions">
+                <button class="footer-button" id="applyChanges">Apply Changes</button>
+                <button class="footer-button secondary" id="cancelChanges">Cancel</button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Hidden file input for preference import -->
+    <input type="file" id="fileInput" accept=".json" style="display: none;">
+
+    <!-- Profile Modal -->
+    <div class="modal-overlay" id="profileModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Your Preference Profile</h3>
+                <button class="modal-close" id="closeProfileModal">×</button>
+            </div>
+            <div class="modal-body" id="profileModalBody">
+                <!-- Profile details will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>

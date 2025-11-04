@@ -1,0 +1,250 @@
+<!-- Binaural Widget Panel -->
+<!-- Binaural Widget: two-row layout within control panel -->
+<div id="control-panel-binaural" class="ui-base control-panel-binaural binaural-widget">
+    <!-- Top row: Root and Mood selectors -->
+    <div class="control-panel-top-row">
+      <!-- Back arrow -->
+      <img src="assets/back_arrow.svg" alt="Back" class="control-panel-back-arrow">
+      <!-- Root selector container -->
+      <div class="root-selector-container">
+        <div class="root-label">Mood:</div>
+        <div class="button_selector button_selector--rootkey rootkey ui-base" tabindex="0">
+          <button class="button_selector__nav">&lt;</button>
+          <div class="button_selector__display">C</div>
+          <button class="button_selector__nav">&gt;</button>
+        </div>
+      </div>
+      <!-- Mood selector container -->
+      <div class="mood-selector-container">
+        <div class="mood-label"></div>
+        <div class="button_selector button_selector--mood ui-base" tabindex="0">
+          <button class="button_selector__nav">&lt;</button>
+          <div class="button_selector__display">Radiance</div>
+          <button class="button_selector__nav">&gt;</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Middle section - Content box and faders split 50/50 -->
+    <div class="binaural-middle-section">
+      <!-- Content Box - Takes exactly half of available space -->
+      <div class="binaural-content-box ui-base">
+        <button class="button_selector__nav binaural-nav-left" id="binaural-nav-prev">&lt;</button>
+        <!-- Content area between navigation buttons -->
+        <div class="binaural-content-area">
+          <!-- Page number indicator -->
+          <div class="binaural-page-number">1</div>
+          <!-- Page 1 - Voice 1 Controls -->
+          <div class="binaural-page binaural-page-1 active">
+            <div class="page-content">
+              <div class="control-grid">
+                <!-- Row 1: Iso and Length -->
+                <label class="control-widget-label pulse-label">Iso:</label>
+                <div class="control-widget control-widget--slider pulse-control" data-voice="1">
+                  <div class="control-widget__track pulse-track"></div>
+                  <div class="control-widget__handle pulse-handle"></div>
+                </div>
+                <label class="control-widget-label length-label">Length:</label>
+                <div class="control-widget control-widget--slider length-control" data-voice="1">
+                  <div class="control-widget__track length-track"></div>
+                  <div class="control-widget__handle length-handle"></div>
+                </div>
+                
+                <!-- Row 2: Oct and Width -->
+                <label class="control-widget-label octave-label">Oct:</label>
+                <div class="control-widget control-widget--buttons octave-widget" data-voice="1">
+                  <button class="octave-btn" data-oct="-2"></button>
+                  <button class="octave-btn" data-oct="-1"></button>
+                  <button class="octave-btn active" data-oct="0"></button>
+                  <button class="octave-btn" data-oct="1"></button>
+                  <button class="octave-btn" data-oct="2"></button>
+                </div>
+                <label class="control-widget-label width-label">Width:</label>
+                <div class="control-widget width-control" data-voice="1">
+                  <img src="../../assets/width_icon.svg" class="width-track" alt="">
+                  <div class="control-widget__handle width-handle"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Page 2 - Voice 2 Controls -->
+          <div class="binaural-page binaural-page-2">
+            <div class="page-content">
+              <div class="control-grid">
+                <!-- Row 1: Iso and Length -->
+                <label class="control-widget-label pulse-label">Iso:</label>
+                <div class="control-widget control-widget--slider pulse-control" data-voice="2">
+                  <div class="control-widget__track pulse-track"></div>
+                  <div class="control-widget__handle pulse-handle"></div>
+                </div>
+                <label class="control-widget-label length-label">Length:</label>
+                <div class="control-widget control-widget--slider length-control" data-voice="2">
+                  <div class="control-widget__track length-track"></div>
+                  <div class="control-widget__handle length-handle"></div>
+                </div>
+                
+                <!-- Row 2: Oct and Width -->
+                <label class="control-widget-label octave-label">Oct:</label>
+                <div class="control-widget control-widget--buttons octave-widget" data-voice="2">
+                  <button class="octave-btn" data-oct="-2"></button>
+                  <button class="octave-btn" data-oct="-1"></button>
+                  <button class="octave-btn active" data-oct="0"></button>
+                  <button class="octave-btn" data-oct="1"></button>
+                  <button class="octave-btn" data-oct="2"></button>
+                </div>
+                <label class="control-widget-label width-label">Width:</label>
+                <div class="control-widget width-control" data-voice="2">
+                  <img src="../../assets/width_icon.svg" class="width-track" alt="">
+                  <div class="control-widget__handle width-handle"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Page 3 - Voice 3 Controls -->
+          <div class="binaural-page binaural-page-3">
+            <div class="page-content">
+              <div class="control-grid">
+                <!-- Row 1: Iso and Length -->
+                <label class="control-widget-label pulse-label">Iso:</label>
+                <div class="control-widget control-widget--slider pulse-control" data-voice="3">
+                  <div class="control-widget__track pulse-track"></div>
+                  <div class="control-widget__handle pulse-handle"></div>
+                </div>
+                <label class="control-widget-label length-label">Length:</label>
+                <div class="control-widget control-widget--slider length-control" data-voice="3">
+                  <div class="control-widget__track length-track"></div>
+                  <div class="control-widget__handle length-handle"></div>
+                </div>
+                
+                <!-- Row 2: Oct and Width -->
+                <label class="control-widget-label octave-label">Oct:</label>
+                <div class="control-widget control-widget--buttons octave-widget" data-voice="3">
+                  <button class="octave-btn" data-oct="-2"></button>
+                  <button class="octave-btn" data-oct="-1"></button>
+                  <button class="octave-btn active" data-oct="0"></button>
+                  <button class="octave-btn" data-oct="1"></button>
+                  <button class="octave-btn" data-oct="2"></button>
+                </div>
+                <label class="control-widget-label width-label">Width:</label>
+                <div class="control-widget width-control" data-voice="3">
+                  <img src="../../assets/width_icon.svg" class="width-track" alt="">
+                  <div class="control-widget__handle width-handle"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Page 4 - Voice 4 Controls -->
+          <div class="binaural-page binaural-page-4">
+            <div class="page-content">
+              <div class="control-grid">
+                <!-- Row 1: Iso and Length -->
+                <label class="control-widget-label pulse-label">Iso:</label>
+                <div class="control-widget control-widget--slider pulse-control" data-voice="4">
+                  <div class="control-widget__track pulse-track"></div>
+                  <div class="control-widget__handle pulse-handle"></div>
+                </div>
+                <label class="control-widget-label length-label">Length:</label>
+                <div class="control-widget control-widget--slider length-control" data-voice="4">
+                  <div class="control-widget__track length-track"></div>
+                  <div class="control-widget__handle length-handle"></div>
+                </div>
+                
+                <!-- Row 2: Oct and Width -->
+                <label class="control-widget-label octave-label">Oct:</label>
+                <div class="control-widget control-widget--buttons octave-widget" data-voice="4">
+                  <button class="octave-btn" data-oct="-2"></button>
+                  <button class="octave-btn" data-oct="-1"></button>
+                  <button class="octave-btn active" data-oct="0"></button>
+                  <button class="octave-btn" data-oct="1"></button>
+                  <button class="octave-btn" data-oct="2"></button>
+                </div>
+                <label class="control-widget-label width-label">Width:</label>
+                <div class="control-widget width-control" data-voice="4">
+                  <img src="../../assets/width_icon.svg" class="width-track" alt="">
+                  <div class="control-widget__handle width-handle"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Page 5 - Voice 5 Controls -->
+          <div class="binaural-page binaural-page-5">
+            <div class="page-content">
+              <div class="control-grid">
+                <!-- Row 1: Iso and Length -->
+                <label class="control-widget-label pulse-label">Iso:</label>
+                <div class="control-widget control-widget--slider pulse-control" data-voice="5">
+                  <div class="control-widget__track pulse-track"></div>
+                  <div class="control-widget__handle pulse-handle"></div>
+                </div>
+                <label class="control-widget-label length-label">Length:</label>
+                <div class="control-widget control-widget--slider length-control" data-voice="5">
+                  <div class="control-widget__track length-track"></div>
+                  <div class="control-widget__handle length-handle"></div>
+                </div>
+                
+                <!-- Row 2: Oct and Width -->
+                <label class="control-widget-label octave-label">Oct:</label>
+                <div class="control-widget control-widget--buttons octave-widget" data-voice="5">
+                  <button class="octave-btn" data-oct="-2"></button>
+                  <button class="octave-btn" data-oct="-1"></button>
+                  <button class="octave-btn active" data-oct="0"></button>
+                  <button class="octave-btn" data-oct="1"></button>
+                  <button class="octave-btn" data-oct="2"></button>
+                </div>
+                <label class="control-widget-label width-label">Width:</label>
+                <div class="control-widget width-control" data-voice="5">
+                  <img src="../../assets/width_icon.svg" class="width-track" alt="">
+                  <div class="control-widget__handle width-handle"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="button_selector__nav binaural-nav-right" id="binaural-nav-next">&gt;</button>
+      </div>
+      
+      <!-- Volume Faders Row - Takes exactly half of available space -->
+      <div class="binaural-faders-row ui-base">
+      <div class="voice-fader" data-voice="1">
+        <div class="fader-track">
+          <div class="fader-handle" style="bottom: 70%;"></div>
+        </div>
+        <div class="voice-label">1</div>
+      </div>
+      <div class="voice-fader" data-voice="2">
+        <div class="fader-track">
+          <div class="fader-handle" style="bottom: 20%;"></div>
+        </div>
+        <div class="voice-label">2</div>
+      </div>
+      <div class="voice-fader" data-voice="3">
+        <div class="fader-track">
+          <div class="fader-handle" style="bottom: 10%;"></div>
+        </div>
+        <div class="voice-label">3</div>
+      </div>
+      <div class="voice-fader" data-voice="4">
+        <div class="fader-track">
+          <div class="fader-handle" style="bottom: 30%;"></div>
+        </div>
+        <div class="voice-label">4</div>
+      </div>
+      <div class="voice-fader" data-voice="5">
+        <div class="fader-track">
+          <div class="fader-handle" style="bottom: 40%;"></div>
+        </div>
+        <div class="voice-label">5</div>
+      </div>
+    </div>
+    </div>
+    
+    <div class="control-panel-bottom-row binaural-presets">
+      <button class="ui-btn ui-base" id="binaural-save-preset">Save</button>
+      <div id="binaural-preset-selector" class="button_selector button_selector--preset ui-base" tabindex="0">
+        <button class="button_selector__nav" id="binaural-preset-prev">&lt;</button>
+        <div class="button_selector__display">Sleeptone</div>
+        <button class="button_selector__nav" id="binaural-preset-next">&gt;</button>
+      </div>
+      <button class="ui-btn ui-base" id="binaural-revert-preset">Revert</button>
+    </div>
+</div>

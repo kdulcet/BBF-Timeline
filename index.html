@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web Audio Journey Map Testing Arena</title>
+    <style>
+        body { 
+            font-family: monospace; 
+            padding: 20px; 
+            background: #f5f5f5;
+        }
+        
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007acc;
+            padding-bottom: 10px;
+        }
+        
+        .journey-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: white;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        
+        .journey-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .plateau {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            border: 2px solid #4CAF50;
+            border-radius: 5px;
+            background: #e8f5e8;
+            min-width: 120px;
+        }
+        
+        .transition {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            border: 2px solid #FF9800;
+            border-radius: 5px;
+            background: #fff3e0;
+            min-width: 100px;
+        }
+        
+        .plateau label, .transition label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .plateau input, .transition input {
+            width: 60px;
+            padding: 5px;
+            text-align: center;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            margin: 2px;
+        }
+        
+        .input-label {
+            font-size: 10px;
+            color: #666;
+            margin: 0;
+        }
+        
+        .carrier-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: white;
+            border: 2px solid #2196F3;
+            border-radius: 8px;
+        }
+        
+        .carrier-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .carrier-input label {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .carrier-input input {
+            width: 120px;
+            padding: 8px;
+            font-size: 16px;
+            text-align: center;
+            border: 2px solid #2196F3;
+            border-radius: 5px;
+        }
+        
+        .hz-suffix {
+            font-weight: bold;
+            color: #666;
+        }
+        
+        .controls-section {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .play-stop-btn {
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        .play-stop-btn:hover {
+            background: #45a049;
+        }
+        
+        .play-stop-btn.playing {
+            background: #f44336;
+        }
+        
+        .play-stop-btn.playing:hover {
+            background: #da190b;
+        }
+        
+        .timeline-diagnostics {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .timeline-status {
+            background: #f0f0f0;
+            padding: 10px 15px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            font-family: monospace;
+            min-width: 200px;
+            text-align: center;
+        }
+        
+
+    </style>
+</head>
+<body>
+    <h1>Web Audio Journey Map Testing Arena</h1>
+    
+    <div class="controls-section">
+        <button id="playStopBtn" class="play-stop-btn">▶ Play</button>
+        
+        <div class="timeline-diagnostics">
+            <div id="timelineStatus" class="timeline-status">
+                Timeline Ready
+            </div>
+        </div>
+    </div>
+    
+    <div class="journey-section">
+        <h2>Journey Map</h2>
+        
+        <div class="journey-row">
+            <!-- Plateau 1 -->
+            <div class="plateau">
+                <label>Plateau 1</label>
+                <div class="input-label">hz</div>
+                <input type="number" id="plateau1_hz" placeholder="Hz" step="0.01" value="2">
+                <div class="input-label">s</div>
+                <input type="number" id="plateau1_time" placeholder="Seconds" step="0.1" value="5">
+            </div>
+            
+            <!-- Transition 1 -->
+            <div class="transition">
+                <label>Transition 1</label>
+                <div class="input-label">s</div>
+                <input type="number" id="transition1_time" placeholder="Seconds" step="0.1" value="10">
+            </div>
+            
+            <!-- Plateau 2 -->
+            <div class="plateau">
+                <label>Plateau 2</label>
+                <div class="input-label">hz</div>
+                <input type="number" id="plateau2_hz" placeholder="Hz" step="0.01" value="15">
+                <div class="input-label">s</div>
+                <input type="number" id="plateau2_time" placeholder="Seconds" step="0.1" value="5">
+            </div>
+            
+            <!-- Transition 2 -->
+            <div class="transition">
+                <label>Transition 2</label>
+                <div class="input-label">s</div>
+                <input type="number" id="transition2_time" placeholder="Seconds" step="0.1" value="10">
+            </div>
+            
+            <!-- Plateau 3 -->
+            <div class="plateau">
+                <label>Plateau 3</label>
+                <div class="input-label">hz</div>
+                <input type="number" id="plateau3_hz" placeholder="Hz" step="0.01" value="5">
+                <div class="input-label">s</div>
+                <input type="number" id="plateau3_time" placeholder="Seconds" step="0.1" value="5">
+            </div>
+        </div>
+    </div>
+    
+    <div class="carrier-section">
+        <h2>Carrier Wave</h2>
+        
+        <div class="carrier-input">
+            <label>Carrier Wave:</label>
+            <input type="number" id="carrier_hz" placeholder="Hz" step="0.01" value="110">
+            <span class="hz-suffix">Hz</span>
+        </div>
+    </div>
+    
+    <script>
+        // Basic console logging for now - will be expanded with Web Audio API
+        function logJourneyMap() {
+            const journeyMap = {
+                plateau1: {
+                    hz: parseFloat(document.getElementById('plateau1_hz').value) || 0,
+                    duration: parseFloat(document.getElementById('plateau1_time').value) || 0
+                },
+                transition1: {
+                    duration: parseFloat(document.getElementById('transition1_time').value) || 0
+                },
+                plateau2: {
+                    hz: parseFloat(document.getElementById('plateau2_hz').value) || 0,
+                    duration: parseFloat(document.getElementById('plateau2_time').value) || 0
+                },
+                transition2: {
+                    duration: parseFloat(document.getElementById('transition2_time').value) || 0
+                },
+                plateau3: {
+                    hz: parseFloat(document.getElementById('plateau3_hz').value) || 0,
+                    duration: parseFloat(document.getElementById('plateau3_time').value) || 0
+                },
+                carrier: parseFloat(document.getElementById('carrier_hz').value) || 440
+            };
+            
+            console.log('Journey Map Configuration:', journeyMap);
+            return journeyMap;
+        }
+        
+        // Global timeline variables
+        let audioContext;
+        let timeline;
+        let isoSynth;
+        let isPlaying = false;
+        
+        // Create timeline segments from the existing type-ins
+        function createTimelineSegments() {
+            const journeyMap = logJourneyMap();
+            
+            const segments = [];
+            let transitionIndex = 1;
+            
+            // Add each plateau and transition pair
+            if (journeyMap.plateau1.hz > 0) {
+                segments.push({
+                    type: 'plateau',
+                    hz: journeyMap.plateau1.hz,
+                    durationSeconds: journeyMap.plateau1.duration
+                });
+                
+                if (journeyMap.plateau2.hz > 0 && journeyMap.transition1.duration > 0) {
+                    segments.push({
+                        type: 'transition',
+                        startHz: journeyMap.plateau1.hz,
+                        endHz: journeyMap.plateau2.hz,
+                        durationSeconds: journeyMap.transition1.duration,
+                        transitionType: 'linear'
+                    });
+                }
+            }
+            
+            if (journeyMap.plateau2.hz > 0) {
+                segments.push({
+                    type: 'plateau',
+                    hz: journeyMap.plateau2.hz,
+                    durationSeconds: journeyMap.plateau2.duration
+                });
+                
+                if (journeyMap.plateau3.hz > 0 && journeyMap.transition2.duration > 0) {
+                    segments.push({
+                        type: 'transition',
+                        startHz: journeyMap.plateau2.hz,
+                        endHz: journeyMap.plateau3.hz,
+                        durationSeconds: journeyMap.transition2.duration,
+                        transitionType: 'linear'
+                    });
+                }
+            }
+            
+            if (journeyMap.plateau3.hz > 0) {
+                segments.push({
+                    type: 'plateau',
+                    hz: journeyMap.plateau3.hz,
+                    durationSeconds: journeyMap.plateau3.duration
+                });
+            }
+            
+            return segments;
+        }
+        
+        // Initialize timeline system
+        async function initializeTimeline() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+            
+            const segments = createTimelineSegments();
+            timeline = new JMTimeline(audioContext, segments);
+            
+            // Initialize ISO Synth
+            isoSynth = new ISOSynth(audioContext);
+            
+            // Set initial carrier frequency from HTML
+            const initialCarrierHz = parseFloat(document.getElementById('carrier_hz').value) || 110;
+            isoSynth.setCarrierFrequency(initialCarrierHz);
+            
+            console.log('Timeline initialized with segments:', segments);
+            console.log('ISO Synth initialized - audio pulse system ready');
+        }
+        
+        // Play/Stop button functionality - timeline and audio control
+        async function togglePlayStop() {
+            const btn = document.getElementById('playStopBtn');
+            
+            if (!isPlaying) {
+                // Start playing
+                isPlaying = true;
+                btn.textContent = '⏹ Stop';
+                btn.classList.add('playing');
+                
+                const config = logJourneyMap();
+                console.log('🎵 Started playing with configuration:', config);
+                
+                // Initialize and start JMTimeline system
+                updateStatus(`Starting Timeline...`);
+                await initializeTimeline();
+                
+                // Read carrier frequency from HTML and set on ISO synth
+                const carrierHz = parseFloat(document.getElementById('carrier_hz').value) || 110;
+                isoSynth.setCarrierFrequency(carrierHz);
+                
+                timeline.start();
+                
+                // Start status polling (separate from pulse events)
+                startTimelineTracking();
+                
+            } else {
+                // Stop playing  
+                isPlaying = false;
+                btn.textContent = '▶ Play';
+                btn.classList.remove('playing');
+                console.log('⏹ Stopped playing');
+                
+                // Stop JMTimeline system
+                if (timeline) {
+                    timeline.stop();
+                }
+                
+                // Stop status polling
+                stopTimelineTracking();
+                
+                updateStatus('Timeline Ready');
+            }
+        }
+        
+        // Status display management  
+        let statusDisplay;
+        
+        // Real Timeline System
+        let timelineStartTime = 0;
+        let timelineSegments = [];
+        let timelineUpdateInterval;
+        let currentSegmentIndex = 0;
+        
+        function createTimelineFromInputs() {
+            const config = logJourneyMap();
+            const segments = [];
+            
+            // Plateau 1
+            if (config.plateau1.hz > 0 && config.plateau1.duration > 0) {
+                segments.push({
+                    type: 'plateau',
+                    phase: 1,
+                    hz: config.plateau1.hz,
+                    duration: config.plateau1.duration
+                });
+            }
+            
+            // Transition 1
+            if (config.transition1.duration > 0 && segments.length > 0 && config.plateau2.hz > 0) {
+                segments.push({
+                    type: 'transition',
+                    phase: 1,
+                    startHz: config.plateau1.hz,
+                    endHz: config.plateau2.hz,
+                    duration: config.transition1.duration
+                });
+            }
+            
+            // Plateau 2
+            if (config.plateau2.hz > 0 && config.plateau2.duration > 0) {
+                segments.push({
+                    type: 'plateau',
+                    phase: 2,
+                    hz: config.plateau2.hz,
+                    duration: config.plateau2.duration
+                });
+            }
+            
+            // Transition 2
+            if (config.transition2.duration > 0 && segments.length > 0 && config.plateau3.hz > 0) {
+                segments.push({
+                    type: 'transition',
+                    phase: 2,
+                    startHz: config.plateau2.hz,
+                    endHz: config.plateau3.hz,
+                    duration: config.transition2.duration
+                });
+            }
+            
+            // Plateau 3
+            if (config.plateau3.hz > 0 && config.plateau3.duration > 0) {
+                segments.push({
+                    type: 'plateau',
+                    phase: 3,
+                    hz: config.plateau3.hz,
+                    duration: config.plateau3.duration
+                });
+            }
+            
+            // Calculate cumulative start times
+            let cumulativeTime = 0;
+            segments.forEach(segment => {
+                segment.startTime = cumulativeTime;
+                segment.endTime = cumulativeTime + segment.duration;
+                cumulativeTime += segment.duration;
+            });
+            
+            return segments;
+        }
+        
+        function startTimelineTracking() {
+            timelineSegments = createTimelineFromInputs();
+            timelineStartTime = performance.now() / 1000.0;
+            currentSegmentIndex = 0;
+            
+            console.log('Timeline segments:', timelineSegments);
+            
+            if (timelineSegments.length === 0) {
+                updateStatus('No valid timeline segments');
+                return;
+            }
+            
+            // Update every 100ms for smooth status display
+            timelineUpdateInterval = setInterval(updateTimelineStatus, 100);
+            updateTimelineStatus(); // Initial update
+        }
+        
+        function stopTimelineTracking() {
+            if (timelineUpdateInterval) {
+                clearInterval(timelineUpdateInterval);
+                timelineUpdateInterval = null;
+            }
+            currentSegmentIndex = 0;
+            timelineSegments = [];
+            
+
+        }
+        
+        function updateTimelineStatus() {
+            const currentTime = (performance.now() / 1000.0) - timelineStartTime;
+            
+            // Find current segment
+            let currentSegment = null;
+            for (let i = 0; i < timelineSegments.length; i++) {
+                const segment = timelineSegments[i];
+                if (currentTime >= segment.startTime && currentTime < segment.endTime) {
+                    currentSegment = segment;
+                    currentSegmentIndex = i;
+                    break;
+                }
+            }
+            
+            if (!currentSegment) {
+                // Timeline finished
+                updateStatus('Timeline Complete');
+                stopTimelineTracking();
+                return;
+            }
+            
+            const timeInSegment = currentTime - currentSegment.startTime;
+            const timeLeft = currentSegment.duration - timeInSegment;
+            
+            let statusText;
+            let currentHz;
+            if (currentSegment.type === 'plateau') {
+                currentHz = currentSegment.hz;
+                statusText = `Plateau ${currentSegment.phase}: ${currentHz.toFixed(1)}Hz | ${timeLeft.toFixed(1)}s left`;
+            } else {
+                // Calculate current Hz for transition
+                const progress = timeInSegment / currentSegment.duration;
+                currentHz = currentSegment.startHz + (currentSegment.endHz - currentSegment.startHz) * progress;
+                statusText = `Transition ${currentSegment.phase}: ${currentHz.toFixed(1)}Hz | ${timeLeft.toFixed(1)}s left`;
+            }
+            
+            updateStatus(statusText);
+            
+            // NOTIFICATION ONLY - timeline status updates
+        }
+
+
+        function updateStatus(message) {
+            if (statusDisplay) {
+                statusDisplay.textContent = message;
+            }
+        }
+        
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get visual elements
+            statusDisplay = document.getElementById('timelineStatus');
+            
+            // Add event listeners to all inputs for real-time logging
+            const inputs = document.querySelectorAll('input');
+            inputs.forEach(input => {
+                input.addEventListener('input', () => {
+                    logJourneyMap();
+                    
+                    // DISABLED: Real-time timeline restart during playback
+                    // Play uses configuration from when play was clicked
+                    // Stop flushes everything, play again uses current configuration
+                });
+            });
+            
+            // Play/Stop button listener
+            document.getElementById('playStopBtn').addEventListener('click', togglePlayStop);
+            
+            // Timeline event listeners - pulse events for audio only
+            document.addEventListener('timeline.pulse.32n', (event) => {
+                const { hz, time } = event.detail;
+                
+                console.log(`32n Pulse: ${hz.toFixed(2)}Hz at ${time.toFixed(3)}s`);
+            });
+            
+            // Timeline state change listeners
+            document.addEventListener('timeline.started', (event) => {
+                console.log('Timeline Started:', event.detail);
+                updateStatus('Timeline Running...');
+            });
+            
+            document.addEventListener('timeline.stopped', (event) => {
+                console.log('Timeline Stopped:', event.detail);
+                updateStatus('Timeline Ready');
+            });
+            
+            document.addEventListener('timeline.hz.changed', (event) => {
+                const { hz, wave_type } = event.detail;
+                console.log(`Hz Changed: ${hz.toFixed(2)}Hz (${wave_type})`);
+            });
+            
+            // Initialize status
+            updateStatus('Timeline Ready');
+            
+            // Initial log
+            logJourneyMap();
+            
+            console.log('Timeline system initialized');
+        });
+    </script>
+    
+    <!-- Import New Timeline System -->
+    <script src="widgets/synths/shared/transport/timeline_main.js"></script>
+    <script src="widgets/synths/shared/transport/timeline_transport.js"></script>
+    <script src="widgets/synths/shared/transport/timeline_journeymap.js"></script>
+    <script src="widgets/synths/shared/transport/timeline_listeners.js"></script>
+    
+    <!-- Import ISO Synth System -->
+    <script src="widgets/synths/iso_synth.js"></script>
+</body>
+</html>
