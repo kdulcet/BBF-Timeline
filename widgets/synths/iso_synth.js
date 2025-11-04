@@ -15,10 +15,11 @@ class ISOSynth {
     this.isRunning = false;
     this.masterGain = null;
     this.activePulses = new Set(); // Track active pulses for emergency cleanup
+    this.pulseCounter = 0; // DEBUG: Track pulse numbers to identify odd/even pattern
     
     // Constants from ISO_README.md
     this.ATTACK_TIME = 0.001;   // 1ms
-    this.RELEASE_TIME = 0.005;  // 5ms
+    this.RELEASE_TIME = 0.007;  // 5ms
     this.ENVELOPE_OVERHEAD = this.ATTACK_TIME + this.RELEASE_TIME; // 6ms total
     
     // Carrier frequency (the actual sine wave pitch) - separate from pulse rate
@@ -49,13 +50,17 @@ class ISOSynth {
       
       const { hz, time } = event.detail;
       
+      // Increment pulse counter
+      this.pulseCounter++;
+      const isOdd = this.pulseCounter % 2 === 1;
+      
       // Calculate pulse duration based on timeline Hz (pulse rate)
       const pulseDuration = this.calculatePulseDuration(hz);
       
       // Generate pulse at scheduled time (sample-accurate)
       this.generatePulse(pulseDuration, time);
       
-      console.log(`ISO Pulse: ${this.carrierFrequency}Hz carrier, ${hz.toFixed(2)}Hz pulse rate → ${(pulseDuration * 1000).toFixed(1)}ms pulse @ ${time.toFixed(3)}s`);
+      console.log(`[PULSE #${this.pulseCounter} ${isOdd ? 'ODD' : 'EVEN'}] ISO Pulse: ${this.carrierFrequency}Hz carrier, ${hz.toFixed(2)}Hz pulse rate → ${(pulseDuration * 1000).toFixed(1)}ms pulse @ ${time.toFixed(3)}s`);
     });
     
     // Timeline state listeners
@@ -111,27 +116,42 @@ class ISOSynth {
     // Setup envelope with precise timing (using scheduled time)
     this.setupEnvelope(envelope, pulseDuration, scheduleTime);
     
-    // **CRITICAL**: Setup cleanup BEFORE starting
-    // This prevents memory leaks during rapid pulse generation
+    // **CRITICAL**: Calculate exact timing for cleanup
+    const envelopeEndTime = scheduleTime + pulseDuration;
+    const oscillatorStopTime = envelopeEndTime + 0.01; // 10ms buffer after envelope
+    
+    // **CRITICAL FIX**: Disconnect envelope IMMEDIATELY after release completes
+    // This prevents ANY overlap between consecutive pulses
+    const disconnectDelay = (envelopeEndTime - this.audioContext.currentTime) * 1000 + 1; // +1ms safety
+    setTimeout(() => {
+      try {
+        envelope.disconnect();
+        console.log(`[PULSE #${this.pulseCounter}] Envelope disconnected at ${this.audioContext.currentTime.toFixed(3)}s`);
+      } catch (e) {
+        // Already disconnected - ignore
+      }
+    }, disconnectDelay);
+    
+    // Oscillator cleanup when it ends
     oscillator.addEventListener('ended', () => {
-      // Disconnect all connections
       try {
         oscillator.disconnect();
-        envelope.disconnect();
       } catch (e) {
-        // Already disconnected - ignore error
+        // Already disconnected - ignore
       }
       
       // Remove from active pulse tracking
       this.activePulses.delete(pulseId);
       
-      // Clear references for garbage collection
-      // (oscillator and envelope will be GC'd when function scope ends)
+      console.log(`[PULSE #${this.pulseCounter}] Oscillator ended at ${this.audioContext.currentTime.toFixed(3)}s`);
     });
     
-    // Start oscillator at scheduled time and schedule stop
+    // Start oscillator and schedule stop
     oscillator.start(scheduleTime);
-    oscillator.stop(scheduleTime + pulseDuration); // This triggers 'ended' event automatically
+    oscillator.stop(oscillatorStopTime);
+    
+    // DEBUG: Log timing
+    console.log(`[PULSE #${this.pulseCounter}] envelope=${envelopeEndTime.toFixed(3)}s oscillator=${oscillatorStopTime.toFixed(3)}s`);
   }
   
   /**
@@ -148,18 +168,31 @@ class ISOSynth {
     // Ensure positive sustain time
     const actualSustainTime = Math.max(sustainTime, 0);
     
-    // ADSR envelope automation
+    // Calculate envelope timing points
+    const attackEnd = scheduleTime + this.ATTACK_TIME;
+    const releaseStart = scheduleTime + this.ATTACK_TIME + actualSustainTime;
+    const releaseEnd = scheduleTime + pulseDuration;
+    
+    // Clear automation and start from zero at scheduleTime
     envelope.gain.cancelScheduledValues(scheduleTime);
     envelope.gain.setValueAtTime(0, scheduleTime);
     
-    // Attack: 0 → 1.0 over 1ms
-    envelope.gain.linearRampToValueAtTime(1.0, scheduleTime + this.ATTACK_TIME);
+    // Attack: 0 → 1.0 over attack time (linear for clean start)
+    envelope.gain.linearRampToValueAtTime(1.0, attackEnd);
     
     // Sustain: hold at 1.0
-    envelope.gain.setValueAtTime(1.0, scheduleTime + this.ATTACK_TIME + actualSustainTime);
+    envelope.gain.setValueAtTime(1.0, releaseStart);
     
-    // Release: 1.0 → 0 over 5ms
-    envelope.gain.linearRampToValueAtTime(0, scheduleTime + pulseDuration);
+    // Release: 1.0 → 0 over release time (linear to reach TRUE zero)
+    envelope.gain.linearRampToValueAtTime(0, releaseEnd);
+    
+    // **CRITICAL**: Lock envelope at zero after release completes
+    // This prevents ANY residual signal if envelope stays connected
+    envelope.gain.setValueAtTime(0, releaseEnd);
+    
+    // DEBUG: Log envelope timing
+    console.log(`Envelope: attack=${attackEnd.toFixed(3)}s sustain=${releaseStart.toFixed(3)}s release=${releaseEnd.toFixed(3)}s`);
+    console.log(`Envelope: attack=${attackEnd.toFixed(3)}s release=${releaseStart.toFixed(3)}→${releaseEnd.toFixed(3)}s (${(releaseEnd - releaseStart) * 1000}ms)`);
   }
   
   /**
@@ -169,6 +202,7 @@ class ISOSynth {
     if (this.isRunning) return;
     
     this.isRunning = true;
+    this.pulseCounter = 0; // Reset pulse counter on start
     console.log('ISO Synth started - listening for pulse events');
   }
   
