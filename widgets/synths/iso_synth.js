@@ -37,16 +37,14 @@ class ISOSynth {
     // TESTING: Disable problematic RIGHT channel
     this.enableRightChannel = true; // Set to true to re-enable for testing
     
-    // Store event listener references for cleanup
-    this.eventListeners = {
-      pulse: null,
-      started: null,
-      stopped: null
-    };
-    
     // Bound cleanup methods to prevent creating new functions per pulse
     this._boundDisconnectEnvelope = this._disconnectEnvelope.bind(this);
     this._boundOscillatorEnded = this._createOscillatorEndedHandler();
+    
+    // Bound event handler methods to prevent creating new functions
+    this._boundHandlePulseEvent = this._handlePulseEvent.bind(this);
+    this._boundHandleStartedEvent = this._handleStartedEvent.bind(this);
+    this._boundHandleStoppedEvent = this._handleStoppedEvent.bind(this);
     
     // WeakMap to store oscillator cleanup data (channel, pulseId)
     this._oscillatorCleanupData = new WeakMap();
@@ -114,46 +112,52 @@ class ISOSynth {
    * Setup timeline event listeners for pulse generation
    */
   setupEventListeners() {
-    // TWO INDEPENDENT CHANNELS - each listens separately
-    // LEFT channel fires on ODD pulse numbers: 1, 3, 5, 7, 9...
-    // RIGHT channel fires on EVEN pulse numbers: 2, 4, 6, 8, 10...
-    // This creates true L/R separation with independent timing per channel
+    // Add listeners using pre-bound methods (no new functions created)
+    document.addEventListener('timeline.pulse.32n', this._boundHandlePulseEvent);
+    document.addEventListener('timeline.started', this._boundHandleStartedEvent);
+    document.addEventListener('timeline.stopped', this._boundHandleStoppedEvent);
+  }
+  
+  /**
+   * Handle pulse event - called on every 32n pulse
+   * @private
+   */
+  _handlePulseEvent(event) {
+    if (!this.isRunning) return;
     
-    // Store listener references for cleanup
-    this.eventListeners.pulse = (event) => {
-      if (!this.isRunning) return;
-      
-      const { hz, time } = event.detail;
-      
-      // Increment pulse counter
-      this.pulseCounter++;
-      
-      // Calculate pulse duration based on timeline Hz (pulse rate)
-      const pulseDuration = this.calculatePulseDuration(hz);
-      
-      // LEFT CHANNEL - fires on ODD pulses only
-      if (this.pulseCounter % 2 === 1) {
-        this.generatePulse('left', pulseDuration, time);
-      }
-      
-      // RIGHT CHANNEL - fires on EVEN pulses only (DISABLED FOR TESTING)
-      if (this.enableRightChannel && this.pulseCounter % 2 === 0) {
-        this.generatePulse('right', pulseDuration, time);
-      }
-    };
+    const { hz, time } = event.detail;
     
-    this.eventListeners.started = () => {
-      this.start();
-    };
+    // Increment pulse counter
+    this.pulseCounter++;
     
-    this.eventListeners.stopped = () => {
-      this.stop();
-    };
+    // Calculate pulse duration based on timeline Hz (pulse rate)
+    const pulseDuration = this.calculatePulseDuration(hz);
     
-    // Add listeners
-    document.addEventListener('timeline.pulse.32n', this.eventListeners.pulse);
-    document.addEventListener('timeline.started', this.eventListeners.started);
-    document.addEventListener('timeline.stopped', this.eventListeners.stopped);
+    // LEFT CHANNEL - fires on ODD pulses only
+    if (this.pulseCounter % 2 === 1) {
+      this.generatePulse('left', pulseDuration, time);
+    }
+    
+    // RIGHT CHANNEL - fires on EVEN pulses only (DISABLED FOR TESTING)
+    if (this.enableRightChannel && this.pulseCounter % 2 === 0) {
+      this.generatePulse('right', pulseDuration, time);
+    }
+  }
+  
+  /**
+   * Handle timeline started event
+   * @private
+   */
+  _handleStartedEvent() {
+    this.start();
+  }
+  
+  /**
+   * Handle timeline stopped event
+   * @private
+   */
+  _handleStoppedEvent() {
+    this.stop();
   }
   
   /**
@@ -373,21 +377,10 @@ class ISOSynth {
   dispose() {
     this.stop();
     
-    // Remove event listeners
-    if (this.eventListeners.pulse) {
-      document.removeEventListener('timeline.pulse.32n', this.eventListeners.pulse);
-      this.eventListeners.pulse = null;
-    }
-    
-    if (this.eventListeners.started) {
-      document.removeEventListener('timeline.started', this.eventListeners.started);
-      this.eventListeners.started = null;
-    }
-    
-    if (this.eventListeners.stopped) {
-      document.removeEventListener('timeline.stopped', this.eventListeners.stopped);
-      this.eventListeners.stopped = null;
-    }
+    // Remove event listeners using bound methods
+    document.removeEventListener('timeline.pulse.32n', this._boundHandlePulseEvent);
+    document.removeEventListener('timeline.started', this._boundHandleStartedEvent);
+    document.removeEventListener('timeline.stopped', this._boundHandleStoppedEvent);
     
     // Disconnect pan nodes
     if (this.channels.left.panNode) {
