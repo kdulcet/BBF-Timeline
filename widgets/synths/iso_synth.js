@@ -44,6 +44,13 @@ class ISOSynth {
       stopped: null
     };
     
+    // Bound cleanup methods to prevent creating new functions per pulse
+    this._boundDisconnectEnvelope = this._disconnectEnvelope.bind(this);
+    this._boundOscillatorEnded = this._createOscillatorEndedHandler();
+    
+    // WeakMap to store oscillator cleanup data (channel, pulseId)
+    this._oscillatorCleanupData = new WeakMap();
+    
     // LEFT and RIGHT channel state tracking
     this.channels = {
       left: {
@@ -204,25 +211,13 @@ class ISOSynth {
     // **CRITICAL**: Disconnect envelope IMMEDIATELY after release completes
     // This prevents overlap between consecutive pulses on THIS channel
     const disconnectDelay = Math.max(0, (envelopeEndTime - this.audioContext.currentTime) * 1000 + 5);
-    setTimeout(() => {
-      try {
-        envelope.disconnect();
-      } catch (e) {
-        // Already disconnected
-      }
-    }, disconnectDelay);
+    setTimeout(this._boundDisconnectEnvelope, disconnectDelay, envelope);
     
-    // Oscillator cleanup when it ends
-    oscillator.addEventListener('ended', () => {
-      try {
-        oscillator.disconnect();
-      } catch (e) {
-        // Already disconnected
-      }
-      
-      // Remove from channel's active pulse tracking
-      channel.activePulses.delete(pulseId);
-    });
+    // Store cleanup data for oscillator ended event (prevents creating new arrow function)
+    this._oscillatorCleanupData.set(oscillator, { channel, pulseId });
+    
+    // Oscillator cleanup when it ends - use single reusable bound handler
+    oscillator.addEventListener('ended', this._boundOscillatorEnded);
     
     // Start oscillator and schedule stop AT RELEASE END TIME
     oscillator.start(scheduleTime);
@@ -333,6 +328,43 @@ class ISOSynth {
    */
   getVolume() {
     return this.masterGain ? this.masterGain.gain.value : 0;
+  }
+  
+  /**
+   * Cleanup helper: disconnect envelope (called via setTimeout)
+   * @private
+   */
+  _disconnectEnvelope(envelope) {
+    try {
+      envelope.disconnect();
+    } catch (e) {
+      // Already disconnected
+    }
+  }
+  
+  /**
+   * Create reusable oscillator ended handler
+   * @private
+   */
+  _createOscillatorEndedHandler() {
+    return (event) => {
+      const oscillator = event.target;
+      const cleanupData = this._oscillatorCleanupData.get(oscillator);
+      
+      if (cleanupData) {
+        try {
+          oscillator.disconnect();
+        } catch (e) {
+          // Already disconnected
+        }
+        
+        // Remove from channel's active pulse tracking
+        cleanupData.channel.activePulses.delete(cleanupData.pulseId);
+        
+        // Clean up WeakMap entry
+        this._oscillatorCleanupData.delete(oscillator);
+      }
+    };
   }
   
   /**
