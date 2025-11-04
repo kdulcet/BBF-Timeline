@@ -54,7 +54,7 @@ function getWaveType(hz) {
 }
 
 function calculate32nInterval(hz) {
-  return 1 / hz;
+  return .5 / hz;
 }
 
 /**
@@ -214,7 +214,7 @@ class JMTimeline {
       
       // Convert to sample position
       const samplePosition = Math.round(currentTime * sampleRate);
-      const durationSamples = Math.round(interval * 1.5 * sampleRate); // 1.5 duty cycle
+      const durationSamples = Math.round(interval * .8 * sampleRate); // 1.5 duty cycle
       
       pulses.push({
         samplePosition,

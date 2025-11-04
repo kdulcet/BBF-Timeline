@@ -37,21 +37,6 @@ class ISOSynth {
     // Stereo positioning - DEFAULT TO PINGPONG for obvious L/R separation
     this.stereoMode = 'pingpong'; // 'pingpong' or 'center'
     
-    // TESTING: Disable problematic RIGHT channel
-    this.enableRightChannel = true; // Set to true to re-enable for testing
-    
-    // Bound cleanup methods to prevent creating new functions per pulse
-    this._boundDisconnectEnvelope = this._disconnectEnvelope.bind(this);
-    this._boundOscillatorEnded = this._createOscillatorEndedHandler();
-    
-    // Bound event handler methods to prevent creating new functions
-    this._boundHandlePulseEvent = this._handlePulseEvent.bind(this);
-    this._boundHandleStartedEvent = this._handleStartedEvent.bind(this);
-    this._boundHandleStoppedEvent = this._handleStoppedEvent.bind(this);
-    
-    // WeakMap to store oscillator cleanup data (channel, pulseId)
-    this._oscillatorCleanupData = new WeakMap();
-    
     // LEFT and RIGHT channel state tracking
     this.channels = {
       left: {

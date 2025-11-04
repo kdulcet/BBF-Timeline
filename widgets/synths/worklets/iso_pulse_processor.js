@@ -24,8 +24,8 @@ class AdsrEnvelope {
     this.sampleRate = sampleRate;
     
     // Envelope times (in seconds)
-    this.attackTime = 0.003;   // 3ms attack
-    this.releaseTime = 0.003;  // 3ms release
+    this.attackTime = 0.000;   // 3ms attack
+    this.releaseTime = 0.005;  // 3ms release
     
     // Calculate ratios for exponential curves
     // Uses 1/e constant (0.36787944) for 63.2% approach
