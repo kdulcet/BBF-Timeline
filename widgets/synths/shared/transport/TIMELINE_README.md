@@ -9,7 +9,7 @@ The JourneyMap Timeline System is a modular, sample-accurate timing engine built
 ## File Structure & Responsibilities
 
 ### 1. `timeline_main.js` - Base Timeline Class
-**Source**: Adapted from Tone.js Timeline
+**Source**: Direct adaptation from Tone.js Timeline
 **Purpose**: Core time-ordered event storage with binary search optimization
 
 #### Key Classes:
@@ -29,13 +29,13 @@ dispose()              // Clean up memory
 #### Binary Search Algorithm:
 - **`_search(time)`**: O(log n) lookup using binary search
 - Keeps events sorted by time for fast retrieval
-- Memory management with configurable limits
+- Memory management with configurable limits (default: 1000 events)
 
 ---
 
 ### 2. `timeline_transport.js` - State Management
-**Source**: Adapted from Tone.js StateTimeline  
-**Purpose**: Track transport states (started/stopped/paused) over time
+**Source**: Direct adaptation from Tone.js StateTimeline  
+**Purpose**: Track transport states (started/stopped/paused) over time with sample accuracy
 
 #### Key Classes:
 - **`StateTimelineEvent`**: Timeline event with state property
@@ -53,12 +53,12 @@ getCurrentState()              // Get current playback state
 #### Usage in JMTimeline:
 - Tracks when timeline starts/stops/pauses
 - Enables proper resuming from pause points
-- Sample-accurate state transitions
+- Sample-accurate state transitions for synth lifecycle management
 
 ---
 
 ### 3. `timeline_jm.js` - Main Timeline Engine
-**Source**: Custom implementation for JourneyMap
+**Source**: Custom implementation for JourneyMap (formerly `timeline_journeymap.js`)
 **Purpose**: Core scheduling engine with two-band architecture
 
 #### Two-Band System:
@@ -121,7 +121,7 @@ Input segments → Compiled timeline with:
 
 ### 4. `timeline_listeners.js` - Synth Integration
 **Source**: Custom abstractions for timeline-aware synths
-**Purpose**: Base classes for synths to easily consume timeline data
+**Purpose**: Base classes for synths to easily consume timeline data via document events
 
 #### Key Classes:
 
@@ -136,18 +136,18 @@ onTimelinePause(detail)        // Override: timeline paused
 
 **`WaveBandListener`** (Wave Band Specialist):
 ```javascript
-onHzChanged(hz, waveType)      // Override: Hz value changed
-getCurrentHz()                 // Get current Hz value
-startWaveTracking()            // Begin Hz monitoring
-stopWaveTracking()             // Stop Hz monitoring
+onHzChanged(hz, time, waveType) // Override: Hz value changed
+getCurrentHz()                  // Get current Hz value
+startWaveTracking()             // Begin Hz monitoring
+stopWaveTracking()              // Stop Hz monitoring
 ```
 
 **`PulseBandListener`** (32n Band Specialist):
 ```javascript
-onPulse32n(hz, time, interval) // Override: 32n pulse triggered
-startPulseTracking()           // Begin pulse monitoring
-stopPulseTracking()            // Stop pulse monitoring
-calculateNextPulse(hz)         // Predict next pulse time
+onPulse32n(time, hz, interval, pulseCount) // Override: 32n pulse triggered
+startPulseTracking()                       // Begin pulse monitoring
+stopPulseTracking()                        // Stop pulse monitoring
+calculateNextPulse(hz)                     // Predict next pulse time
 ```
 
 **`DualBandListener`** (Both Bands):
@@ -158,22 +158,22 @@ calculateNextPulse(hz)         // Predict next pulse time
 ```javascript
 // Wave Band Synth (Binaural, Carrier)
 class BinauralSynth extends WaveBandListener {
-  onHzChanged(hz, waveType) {
-    this.oscillator.frequency.value = hz;
+  onHzChanged(hz, time, waveType) {
+    this.oscillator.frequency.linearRampToValueAtTime(hz, time);
   }
 }
 
 // Pulse Band Synth (ISO, Percussion)
 class ISOSynth extends PulseBandListener {
-  onPulse32n(hz, time, interval) {
-    this.triggerNote(hz, time);
+  onPulse32n(time, hz, interval, pulseCount) {
+    this.generatePulse(time, hz);
   }
 }
 
 // Dual Band Synth (Complex)
 class HybridSynth extends DualBandListener {
-  onHzChanged(hz) { /* continuous */ }
-  onPulse32n(hz, time) { /* rhythmic */ }
+  onHzChanged(hz, time, waveType) { /* continuous */ }
+  onPulse32n(time, hz, interval, pulseCount) { /* rhythmic */ }
 }
 ```
 
@@ -200,13 +200,13 @@ Compiled Timeline: [
 
 ### Event Scheduling:
 ```
-Audio Scheduler (32ms lookahead)
+Audio Scheduler (32ms ticker, 100ms lookahead)
       ↓
-_scheduleWaveEvents() → getCurrentHz() → timeline.hz.changed
+_processWaveBandEvents() → getCurrentHz() → timeline.hz.changed
       ↓  
-_schedule32nEvents() → _schedulePulseCallback() → timeline.pulse.32n
+_processPulseBandEvents() → _schedulePulseCallback() → timeline.pulse.32n
       ↓
-Document Events → Event Listeners → GLSL Blinking / Synth Control
+Document Events → Event Listeners → Synth Integration
 ```
 
 ### State Management:
@@ -220,45 +220,58 @@ TimelineListener subclasses → Auto start/stop synths
 
 ## Current Integration
 
-### GLSL Blinking Connection:
+### ISO Synth Connection:
 ```javascript
-// In index.html
-document.addEventListener('timeline.pulse.32n', (event) => {
-  const { hz } = event.detail;
-  updateGLSLHz(hz); // Trigger GPU blink (~1-4ms latency)
-});
+// ISO synth listens to 32n pulse events
+class ISOSynth extends PulseBandListener {
+  onPulse32n(time, hz, interval, pulseCount) {
+    this.generatePulse(time, hz);
+  }
+}
 ```
+
+**Memory-Safe Pattern:**
+ISO synth uses bound methods to prevent memory leaks from anonymous functions:
+- `_boundDisconnectEnvelope` - Single reusable method for envelope cleanup
+- `_boundOscillatorEnded` - Single reusable handler for all oscillator events  
+- `_boundHandlePulseEvent` - Reusable pulse event handler
+- WeakMap stores per-oscillator cleanup data without creating new functions
+
+**Result:** No new functions created per pulse, prevents compiled code accumulation.
 
 ### Timeline Lifecycle:
 ```javascript
 // Play button pressed
 await initializeTimeline();  // Create JMTimeline instance
 timeline.start();            // Begin pulse generation
-// → 32n pulses → GLSL blinking
+// → 32n pulses → ISO synth pulse generation
 
 // Stop button pressed  
 timeline.stop();             // Stop pulse generation
-stopGLSLBlinking();         // Clear visual state
+isoSynth.dispose();          // Clean up audio nodes
 ```
 
 ## Debugging & Troubleshooting
 
 ### Console Events:
-All timeline events are logged. Check console for:
-- `Timeline initialized with segments: [...]`
-- `32n Pulse: 5.00Hz at 1.234s`
-- `Hz Changed: 7.50Hz (ALPHA)`
+Timeline events are dispatched to document listeners. Monitor with:
+```javascript
+document.addEventListener('timeline.pulse.32n', (e) => console.log('Pulse:', e.detail));
+document.addEventListener('timeline.hz.changed', (e) => console.log('Hz:', e.detail.hz));
+```
 
 ### Common Issues:
-1. **No blinking**: Check if `timeline.start()` was called
-2. **Irregular blinking**: Check segment compilation and Hz values
-3. **Transition problems**: Check `getCurrentHz()` interpolation
-4. **Memory leaks**: Ensure `dispose()` is called on cleanup
+1. **No pulses**: Check if `timeline.start()` was called
+2. **Irregular pulses**: Check segment compilation and Hz values
+3. **Transition problems**: Check `_getHzAtTime()` interpolation  
+4. **Memory leaks**: Ensure bound methods used (not anonymous functions)
+5. **Disposal issues**: Call `timeline.stop()` and synth `dispose()` on cleanup
 
 ### Performance Monitoring:
 - 32n pulse events should be sample-accurate (±1ms)
 - Wave Band Hz updates should be smooth during transitions
-- Memory usage should stay constant with memory limits
+- Memory usage should stay constant (no function accumulation)
+- Compiled code instances should remain stable during playback
 
 ## Tone.js Heritage
 
