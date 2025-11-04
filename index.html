@@ -462,7 +462,7 @@
             timeline = new JMTimeline(audioContext, segments);
             
             // Initialize ISO Synth
-            isoSynth = new ISOSynth(audioContext);
+            window.isoSynth = isoSynth = new ISOSynth(audioContext);
             
             // Set initial carrier frequency from HTML
             const initialCarrierHz = parseFloat(document.getElementById('carrier_hz').value) || 110;
