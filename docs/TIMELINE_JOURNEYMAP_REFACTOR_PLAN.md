@@ -1,6 +1,6 @@
 # JMTimeline Refactoring Analysis & Plan
 
-**File:** `timeline_journeymap.js` (1060 lines)  
+**File:** `timeline_jm.js` (1060 lines)  
 **Date:** November 3, 2025  
 **Status:** Documentation Review - No Changes Yet
 
@@ -67,7 +67,7 @@ The JMTimeline engine is well-structured but could benefit from extracting 3 foc
 **Extract:** 3 focused subsystems
 
 ```
-timeline_journeymap.js (500 lines)
+timeline_jm.js (500 lines)
   └── JMTimeline class
        • Segment compilation
        • Transport control (start/stop/pause)
@@ -343,7 +343,7 @@ Then remove individual Tone.js comments from methods.
 ## Files Changed This Session
 
 1. ✅ `timeline_listeners.js` - Documentation cleanup complete
-2. 🔄 `timeline_journeymap.js` - This plan document (no changes yet)
+2. 🔄 `timeline_jm.js` - This plan document (no changes yet)
 3. ⏸️ `timeline_main.js` - Pending review
 4. ⏸️ `timeline_transport.js` - Pending review
 

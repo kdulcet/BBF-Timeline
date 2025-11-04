@@ -1,7 +1,7 @@
 # Ticker-Based Scheduling Refactor
 
 ## Overview
-Refactored `timeline_journeymap.js` from setTimeout-based pulse scheduling to Tone.js-inspired 32ms ticker loop for sample-accurate timing.
+Refactored `timeline_jm.js` from setTimeout-based pulse scheduling to Tone.js-inspired 32ms ticker loop for sample-accurate timing.
 
 ## Changes Made
 

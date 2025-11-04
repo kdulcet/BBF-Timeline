@@ -376,6 +376,13 @@
                 // Stop JMTimeline system
                 if (timeline) {
                     timeline.stop();
+                    timeline = null; // Clear reference
+                }
+                
+                // **CRITICAL**: Dispose ISO synth to remove event listeners
+                if (isoSynth) {
+                    isoSynth.dispose();
+                    isoSynth = null; // Clear reference
                 }
                 
                 // Stop status polling
@@ -593,7 +600,7 @@
     <!-- Import New Timeline System -->
     <script src="widgets/synths/shared/transport/timeline_main.js"></script>
     <script src="widgets/synths/shared/transport/timeline_transport.js"></script>
-    <script src="widgets/synths/shared/transport/timeline_journeymap.js"></script>
+    <script src="widgets/synths/shared/transport/timeline_jm.js"></script>
     <script src="widgets/synths/shared/transport/timeline_listeners.js"></script>
     
     <!-- Import ISO Synth System -->

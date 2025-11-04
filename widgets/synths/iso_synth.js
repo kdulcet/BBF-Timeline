@@ -1,12 +1,19 @@
 /**
- * ISO Pulse Synthesis System
+ * ISO Pulse Synthesis System - Alternating L/R Architecture
  * Memory-safe pulsed sine wave generator with proper Web Audio disposal
  * 
- * Based on ISO_README.md specifications:
- * - Fresh OscillatorNode per pulse (0° phase coherence)
- * - 1ms attack, sustain, 5ms release envelope
- * - Pulse duration = (1000ms / Hz) / 2 (50% duty cycle)
- * - Mandatory cleanup to prevent memory leaks
+ * ARCHITECTURE:
+ * - Two independent oscillator channels (LEFT and RIGHT)
+ * - Alternating pulse pattern: L → R → L → R
+ * - Each channel gets 750ms rest at 2Hz (250ms pulse + 250ms silence + 500ms wait)
+ * - Discrete envelopes eliminate overlap interference
+ * - 50% duty cycle: 250ms pulse, 250ms silence at 2Hz
+ * 
+ * STEREO MODES:
+ * - Ping-pong: L fully left, R fully right (spatial alternation)
+ * - Center: L and R both center (temporal alternation, mono image)
+ * 
+ * EXPANDABLE: Ready for future 5x2 factory architecture
  */
 
 class ISOSynth {
@@ -14,63 +21,132 @@ class ISOSynth {
     this.audioContext = audioContext;
     this.isRunning = false;
     this.masterGain = null;
-    this.activePulses = new Set(); // Track active pulses for emergency cleanup
-    this.pulseCounter = 0; // DEBUG: Track pulse numbers to identify odd/even pattern
+    this.pulseCounter = 0;
     
     // Constants from ISO_README.md
-    this.ATTACK_TIME = 0.001;   // 1ms
-    this.RELEASE_TIME = 0.007;  // 5ms
+    this.ATTACK_TIME = 0.007;   // 1ms
+    this.RELEASE_TIME = 0.025;  // 5ms
     this.ENVELOPE_OVERHEAD = this.ATTACK_TIME + this.RELEASE_TIME; // 6ms total
     
     // Carrier frequency (the actual sine wave pitch) - separate from pulse rate
     this.carrierFrequency = 440; // Default to A4 (440Hz)
     
-    this.setupMasterGain();
+    // Stereo positioning - DEFAULT TO PINGPONG for obvious L/R separation
+    this.stereoMode = 'pingpong'; // 'pingpong' or 'center'
+    
+    // TESTING: Disable problematic RIGHT channel
+    this.enableRightChannel = true; // Set to true to re-enable for testing
+    
+    // Store event listener references for cleanup
+    this.eventListeners = {
+      pulse: null,
+      started: null,
+      stopped: null
+    };
+    
+    // LEFT and RIGHT channel state tracking
+    this.channels = {
+      left: {
+        activePulses: new Set(),
+        panNode: null,
+        pulseCount: 0
+      },
+      right: {
+        activePulses: new Set(),
+        panNode: null,
+        pulseCount: 0
+      }
+    };
+    
+    this.setupAudioGraph();
     this.setupEventListeners();
     
-    console.log('ISO Synth initialized - memory-safe pulse engine ready');
+    console.log('ISO Synth initialized - Alternating L/R architecture ready');
   }
   
   /**
-   * Setup master gain node for volume control
+   * Setup audio graph with L/R channels and stereo positioning
    */
-  setupMasterGain() {
+  setupAudioGraph() {
+    // Master gain for overall volume
     this.masterGain = this.audioContext.createGain();
     this.masterGain.gain.value = 0.3; // Safe default volume
     this.masterGain.connect(this.audioContext.destination);
+    
+    // LEFT channel pan node
+    this.channels.left.panNode = this.audioContext.createStereoPanner();
+    this.channels.left.panNode.connect(this.masterGain);
+    
+    // RIGHT channel pan node
+    this.channels.right.panNode = this.audioContext.createStereoPanner();
+    this.channels.right.panNode.connect(this.masterGain);
+    
+    // Set initial stereo positioning
+    this.setStereoMode(this.stereoMode);
+  }
+  
+  /**
+   * Set stereo positioning mode
+   * @param {string} mode - 'pingpong' or 'center'
+   */
+  setStereoMode(mode) {
+    this.stereoMode = mode;
+    
+    if (mode === 'pingpong') {
+      this.channels.left.panNode.pan.value = -1.0;  // Fully left
+      this.channels.right.panNode.pan.value = 1.0;  // Fully right
+    } else {
+      this.channels.left.panNode.pan.value = 0.0;   // Center
+      this.channels.right.panNode.pan.value = 0.0;  // Center
+    }
+    
+    console.log(`Stereo mode: ${mode} (L=${this.channels.left.panNode.pan.value}, R=${this.channels.right.panNode.pan.value})`);
   }
   
   /**
    * Setup timeline event listeners for pulse generation
    */
   setupEventListeners() {
-    // Listen for 32n pulse events from timeline
-    document.addEventListener('timeline.pulse.32n', (event) => {
+    // TWO INDEPENDENT CHANNELS - each listens separately
+    // LEFT channel fires on ODD pulse numbers: 1, 3, 5, 7, 9...
+    // RIGHT channel fires on EVEN pulse numbers: 2, 4, 6, 8, 10...
+    // This creates true L/R separation with independent timing per channel
+    
+    // Store listener references for cleanup
+    this.eventListeners.pulse = (event) => {
       if (!this.isRunning) return;
       
       const { hz, time } = event.detail;
       
       // Increment pulse counter
       this.pulseCounter++;
-      const isOdd = this.pulseCounter % 2 === 1;
       
       // Calculate pulse duration based on timeline Hz (pulse rate)
       const pulseDuration = this.calculatePulseDuration(hz);
       
-      // Generate pulse at scheduled time (sample-accurate)
-      this.generatePulse(pulseDuration, time);
+      // LEFT CHANNEL - fires on ODD pulses only
+      if (this.pulseCounter % 2 === 1) {
+        this.generatePulse('left', pulseDuration, time);
+      }
       
-      console.log(`[PULSE #${this.pulseCounter} ${isOdd ? 'ODD' : 'EVEN'}] ISO Pulse: ${this.carrierFrequency}Hz carrier, ${hz.toFixed(2)}Hz pulse rate → ${(pulseDuration * 1000).toFixed(1)}ms pulse @ ${time.toFixed(3)}s`);
-    });
+      // RIGHT CHANNEL - fires on EVEN pulses only (DISABLED FOR TESTING)
+      if (this.enableRightChannel && this.pulseCounter % 2 === 0) {
+        this.generatePulse('right', pulseDuration, time);
+      }
+    };
     
-    // Timeline state listeners
-    document.addEventListener('timeline.started', () => {
+    this.eventListeners.started = () => {
       this.start();
-    });
+    };
     
-    document.addEventListener('timeline.stopped', () => {
+    this.eventListeners.stopped = () => {
       this.stop();
-    });
+    };
+    
+    // Add listeners
+    document.addEventListener('timeline.pulse.32n', this.eventListeners.pulse);
+    document.addEventListener('timeline.started', this.eventListeners.started);
+    document.addEventListener('timeline.stopped', this.eventListeners.stopped);
   }
   
   /**
@@ -81,54 +157,58 @@ class ISOSynth {
     if (hz <= 0) return 0.1; // Fallback for invalid Hz
     
     const period = 1.0 / hz; // Period in seconds
-    const pulseDuration = period / 2; // 50% duty cycle
+    const pulseDuration = period / 1.25; // 50% duty cycle
     
     // Ensure minimum duration for proper envelope
     return Math.max(pulseDuration, this.ENVELOPE_OVERHEAD);
   }
   
   /**
-   * Generate a single pulse with proper memory management
-   * CRITICAL: Fresh nodes + mandatory cleanup pattern
+   * Generate a single pulse on specified channel
+   * CRITICAL: Fresh nodes per pulse + discrete channel cleanup
+   * @param {string} channelName - 'left' or 'right'
    * @param {number} pulseDuration - Duration of the pulse envelope (from timeline Hz)
    * @param {number} startTime - Web Audio scheduled start time (sample-accurate)
    */
-  generatePulse(pulseDuration, startTime = null) {
-    // Use provided time or current time (for backward compatibility)
+  generatePulse(channelName, pulseDuration, startTime = null) {
     const scheduleTime = startTime !== null ? startTime : this.audioContext.currentTime;
+    const channel = this.channels[channelName];
     
-    // Create fresh nodes (never reuse - ensures 0° phase coherence)
+    // Create fresh nodes for THIS pulse on THIS channel
     const oscillator = this.audioContext.createOscillator();
     const envelope = this.audioContext.createGain();
     
-    // Track this pulse for emergency cleanup
+    // Track this pulse for channel-specific cleanup
     const pulseId = Date.now() + Math.random();
-    this.activePulses.add(pulseId);
+    channel.activePulses.add(pulseId);
+    channel.pulseCount++;
     
     // Configure oscillator - use carrier frequency (NOT timeline Hz)
     oscillator.type = 'sine';
     oscillator.frequency.setValueAtTime(this.carrierFrequency, scheduleTime);
     
-    // Connect audio graph
+    // Connect: oscillator → envelope → channel pan → master gain → destination
     oscillator.connect(envelope);
-    envelope.connect(this.masterGain);
+    envelope.connect(channel.panNode);
     
-    // Setup envelope with precise timing (using scheduled time)
+    // Setup envelope with precise timing
     this.setupEnvelope(envelope, pulseDuration, scheduleTime);
     
-    // **CRITICAL**: Calculate exact timing for cleanup
+    // Calculate exact timing for cleanup
     const envelopeEndTime = scheduleTime + pulseDuration;
-    const oscillatorStopTime = envelopeEndTime + 0.01; // 10ms buffer after envelope
     
-    // **CRITICAL FIX**: Disconnect envelope IMMEDIATELY after release completes
-    // This prevents ANY overlap between consecutive pulses
-    const disconnectDelay = (envelopeEndTime - this.audioContext.currentTime) * 1000 + 1; // +1ms safety
+    // **FIX FROM STACK OVERFLOW**: Stop oscillator AT THE SAME TIME envelope reaches zero
+    // Not after! Stopping after creates discontinuity click
+    const oscillatorStopTime = envelopeEndTime; // Same time as release completes
+    
+    // **CRITICAL**: Disconnect envelope IMMEDIATELY after release completes
+    // This prevents overlap between consecutive pulses on THIS channel
+    const disconnectDelay = Math.max(0, (envelopeEndTime - this.audioContext.currentTime) * 1000 + 5);
     setTimeout(() => {
       try {
         envelope.disconnect();
-        console.log(`[PULSE #${this.pulseCounter}] Envelope disconnected at ${this.audioContext.currentTime.toFixed(3)}s`);
       } catch (e) {
-        // Already disconnected - ignore
+        // Already disconnected
       }
     }, disconnectDelay);
     
@@ -137,21 +217,16 @@ class ISOSynth {
       try {
         oscillator.disconnect();
       } catch (e) {
-        // Already disconnected - ignore
+        // Already disconnected
       }
       
-      // Remove from active pulse tracking
-      this.activePulses.delete(pulseId);
-      
-      console.log(`[PULSE #${this.pulseCounter}] Oscillator ended at ${this.audioContext.currentTime.toFixed(3)}s`);
+      // Remove from channel's active pulse tracking
+      channel.activePulses.delete(pulseId);
     });
     
-    // Start oscillator and schedule stop
+    // Start oscillator and schedule stop AT RELEASE END TIME
     oscillator.start(scheduleTime);
     oscillator.stop(oscillatorStopTime);
-    
-    // DEBUG: Log timing
-    console.log(`[PULSE #${this.pulseCounter}] envelope=${envelopeEndTime.toFixed(3)}s oscillator=${oscillatorStopTime.toFixed(3)}s`);
   }
   
   /**
@@ -173,26 +248,23 @@ class ISOSynth {
     const releaseStart = scheduleTime + this.ATTACK_TIME + actualSustainTime;
     const releaseEnd = scheduleTime + pulseDuration;
     
-    // Clear automation and start from zero at scheduleTime
+    // Clean envelope with exponential ramps for smooth onset/offset
     envelope.gain.cancelScheduledValues(scheduleTime);
-    envelope.gain.setValueAtTime(0, scheduleTime);
     
-    // Attack: 0 → 1.0 over attack time (linear for clean start)
-    envelope.gain.linearRampToValueAtTime(1.0, attackEnd);
+    // Start from near-zero (exponentialRamp can't use true 0)
+    envelope.gain.setValueAtTime(0.0001, scheduleTime);
+    
+    // Attack: exponential ramp to peak (smoother onset than linear)
+    envelope.gain.exponentialRampToValueAtTime(1.0, attackEnd);
     
     // Sustain: hold at 1.0
     envelope.gain.setValueAtTime(1.0, releaseStart);
     
-    // Release: 1.0 → 0 over release time (linear to reach TRUE zero)
-    envelope.gain.linearRampToValueAtTime(0, releaseEnd);
+    // Release: exponential ramp to near-zero (smoother offset than linear)
+    envelope.gain.exponentialRampToValueAtTime(0.0001, releaseEnd);
     
-    // **CRITICAL**: Lock envelope at zero after release completes
-    // This prevents ANY residual signal if envelope stays connected
+    // Lock at true zero after release completes
     envelope.gain.setValueAtTime(0, releaseEnd);
-    
-    // DEBUG: Log envelope timing
-    console.log(`Envelope: attack=${attackEnd.toFixed(3)}s sustain=${releaseStart.toFixed(3)}s release=${releaseEnd.toFixed(3)}s`);
-    console.log(`Envelope: attack=${attackEnd.toFixed(3)}s release=${releaseStart.toFixed(3)}→${releaseEnd.toFixed(3)}s (${(releaseEnd - releaseStart) * 1000}ms)`);
   }
   
   /**
@@ -214,15 +286,18 @@ class ISOSynth {
     
     this.isRunning = false;
     
-    // Emergency cleanup: force stop any remaining active pulses
-    // This shouldn't be necessary with proper 'ended' event handling,
-    // but provides safety net for memory management
-    if (this.activePulses.size > 0) {
-      console.warn(`ISO Synth cleanup: ${this.activePulses.size} active pulses during stop`);
-      this.activePulses.clear();
+    // Emergency cleanup: force stop any remaining active pulses on BOTH channels
+    const leftActive = this.channels.left.activePulses.size;
+    const rightActive = this.channels.right.activePulses.size;
+    const totalActive = leftActive + rightActive;
+    
+    if (totalActive > 0) {
+      console.warn(`ISO Synth cleanup: ${leftActive} LEFT + ${rightActive} RIGHT = ${totalActive} active pulses during stop`);
+      this.channels.left.activePulses.clear();
+      this.channels.right.activePulses.clear();
     }
     
-    console.log('ISO Synth stopped - pulse generation disabled');
+    console.log('ISO Synth stopped - L/R pulse generation disabled');
   }
   
   /**
@@ -266,21 +341,61 @@ class ISOSynth {
   dispose() {
     this.stop();
     
+    // Remove event listeners
+    if (this.eventListeners.pulse) {
+      document.removeEventListener('timeline.pulse.32n', this.eventListeners.pulse);
+      this.eventListeners.pulse = null;
+    }
+    
+    if (this.eventListeners.started) {
+      document.removeEventListener('timeline.started', this.eventListeners.started);
+      this.eventListeners.started = null;
+    }
+    
+    if (this.eventListeners.stopped) {
+      document.removeEventListener('timeline.stopped', this.eventListeners.stopped);
+      this.eventListeners.stopped = null;
+    }
+    
+    // Disconnect pan nodes
+    if (this.channels.left.panNode) {
+      this.channels.left.panNode.disconnect();
+      this.channels.left.panNode = null;
+    }
+    
+    if (this.channels.right.panNode) {
+      this.channels.right.panNode.disconnect();
+      this.channels.right.panNode = null;
+    }
+    
+    // Disconnect master gain
     if (this.masterGain) {
       this.masterGain.disconnect();
       this.masterGain = null;
     }
     
-    // Clear any remaining pulse tracking
-    this.activePulses.clear();
+    // Clear any remaining pulse tracking on both channels
+    this.channels.left.activePulses.clear();
+    this.channels.right.activePulses.clear();
     
-    console.log('ISO Synth disposed - all resources cleaned up');
+    // Null out audioContext reference
+    this.audioContext = null;
+    
+    console.log('ISO Synth disposed - L/R channels, event listeners, and all resources cleaned up');
   }
 }
 
 // Export for use in timeline system
 if (typeof window !== 'undefined') {
   window.ISOSynth = ISOSynth;
+  
+  // Auto-cleanup on page unload to prevent memory leaks
+  window.addEventListener('beforeunload', () => {
+    // Find and dispose any ISOSynth instances
+    if (window.isoSynth && typeof window.isoSynth.dispose === 'function') {
+      window.isoSynth.dispose();
+    }
+  });
 }
 
 // Export for module systems

@@ -57,7 +57,7 @@ getCurrentState()              // Get current playback state
 
 ---
 
-### 3. `timeline_journeymap.js` - Main Timeline Engine
+### 3. `timeline_jm.js` - Main Timeline Engine
 **Source**: Custom implementation for JourneyMap
 **Purpose**: Core scheduling engine with two-band architecture
 
