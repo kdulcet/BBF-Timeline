@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * BINAURAL SYNTH - Journey Map Segment-Based Architecture
+ * BINAURAL SYNTH - Journey Map Segment-Based (Simplified)
  * ============================================================================
  * 
  * PURPOSE:
@@ -24,7 +24,7 @@
  * ============================================================================
  */
 
-class BinauralSynth {
+class BinauralSynthJM {
   constructor(audioContext) {
     this.audioContext = audioContext;
     this.isRunning = false;
@@ -40,7 +40,7 @@ class BinauralSynth {
     
     this.setupAudioGraph();
     
-    console.log('Binaural Synth initialized (worklet pending)');
+    console.log('Binaural Synth JM initialized (worklet pending)');
   }
   
   /**
@@ -68,22 +68,22 @@ class BinauralSynth {
       // Message handler for worklet feedback
       this.workletNode.port.onmessage = (event) => {
         if (event.data.type === 'journeyMapLoaded') {
-          console.log(`[Binaural] ✅ Journey map loaded: ${event.data.segmentCount} segments, ${event.data.totalDurationSeconds.toFixed(1)}s`);
+          console.log(`[Binaural JM] ✅ Journey map loaded: ${event.data.segmentCount} segments, ${event.data.totalDurationSeconds.toFixed(1)}s`);
         } else if (event.data.type === 'started') {
-          console.log('[Binaural] ▶️  Audio started');
+          console.log('[Binaural JM] ▶️  Audio started');
         } else if (event.data.type === 'stopped') {
-          console.log('[Binaural] ⏹️  Audio stopped');
+          console.log('[Binaural JM] ⏹️  Audio stopped');
         } else if (event.data.type === 'completed') {
-          console.log('[Binaural] ✅ Timeline completed');
+          console.log('[Binaural JM] ✅ Timeline completed');
           this.isRunning = false;
         }
       };
       
       this.workletReady = true;
-      console.log('[Binaural] ✅ Worklet loaded and ready');
+      console.log('[Binaural JM] ✅ Worklet loaded and ready');
       
     } catch (error) {
-      console.error('[Binaural] ❌ Failed to load worklet:', error);
+      console.error('[Binaural JM] ❌ Failed to load worklet:', error);
       throw error;
     }
   }
@@ -112,11 +112,11 @@ class BinauralSynth {
    */
   loadJourneyMap(segments) {
     if (!this.workletReady || !this.workletNode) {
-      console.error('[Binaural] ❌ Cannot load journey map - worklet not ready');
+      console.error('[Binaural JM] ❌ Cannot load journey map - worklet not ready');
       return;
     }
     
-    console.log(`[Binaural] 📨 Sending journey map: ${segments.length} segments, carrier=${this.carrierFrequency}Hz`);
+    console.log(`[Binaural JM] 📨 Sending journey map: ${segments.length} segments, carrier=${this.carrierFrequency}Hz`);
     
     // Send segments to worklet
     this.workletNode.port.postMessage({
@@ -138,7 +138,7 @@ class BinauralSynth {
   start() {
     if (this.isRunning || !this.workletReady) {
       if (!this.workletReady) {
-        console.warn('[Binaural] ⚠️  Worklet not ready. Call init() first.');
+        console.warn('[Binaural JM] ⚠️  Worklet not ready. Call init() first.');
       }
       return;
     }
@@ -151,7 +151,7 @@ class BinauralSynth {
     // Start audio generation in worklet
     this.workletNode.port.postMessage({ type: 'start' });
     
-    console.log(`[Binaural] ▶️  Started: Carrier=${this.carrierFrequency}Hz`);
+    console.log(`[Binaural JM] ▶️  Started: Carrier=${this.carrierFrequency}Hz`);
   }
   
   /**
@@ -165,7 +165,7 @@ class BinauralSynth {
     // Stop audio generation in worklet
     this.workletNode.port.postMessage({ type: 'stop' });
     
-    console.log('[Binaural] ⏹️  Stopped');
+    console.log('[Binaural JM] ⏹️  Stopped');
   }
   
   /**
@@ -189,7 +189,7 @@ class BinauralSynth {
       });
     }
     
-    console.log(`[Binaural] 🎵 Carrier frequency set to: ${this.carrierFrequency}Hz`);
+    console.log(`[Binaural JM] 🎵 Carrier frequency set to: ${this.carrierFrequency}Hz`);
   }
   
   /**
@@ -199,7 +199,7 @@ class BinauralSynth {
   setWidth(width) {
     this.width = Math.max(0, Math.min(100, width));
     this.updateWidth();
-    console.log(`[Binaural] 📏 Width set to: ${this.width}%`);
+    console.log(`[Binaural JM] 📏 Width set to: ${this.width}%`);
   }
   
   /**
@@ -222,33 +222,21 @@ class BinauralSynth {
   }
   
   /**
-   * Set volume (normalized 0.0-1.0, converts to dB internally)
-   * @param {number} volumeNormalized - Volume level (0.0 = silence, 1.0 = full)
+   * Set volume in decibels
+   * @param {number} gainDb - Gain in decibels (-60 to 0)
    */
-  setVolume(volumeNormalized) {
+  setVolume(gainDb) {
     if (!this.workletNode) return;
     
-    // Clamp to 0.0-1.0 range
-    const clamped = Math.max(0, Math.min(1, volumeNormalized));
-    
-    // Convert to decibels: -60dB to 0dB
-    // Use logarithmic scaling for perceptually linear volume
-    let gainDb;
-    if (clamped <= 0.0001) {
-      // Effectively silence
-      gainDb = -60;
-    } else {
-      // Log scale: 0.01 = -40dB, 0.1 = -20dB, 1.0 = 0dB
-      gainDb = 20 * Math.log10(clamped);
-    }
+    const clampedDb = Math.max(-60, Math.min(0, gainDb));
     
     // Send to worklet
     this.workletNode.port.postMessage({
       type: 'setVolume',
-      gainDb: gainDb
+      gainDb: clampedDb
     });
     
-    console.log(`[Binaural] 🔊 Volume set to: ${(clamped * 100).toFixed(0)}% (${gainDb.toFixed(1)}dB)`);
+    console.log(`[Binaural JM] 🔊 Volume set to: ${clampedDb.toFixed(1)}dB`);
   }
   
   /**
@@ -299,6 +287,6 @@ class BinauralSynth {
     }
     
     this.workletReady = false;
-    console.log('[Binaural] 🗑️  Disposed');
+    console.log('[Binaural JM] 🗑️  Disposed');
   }
 }

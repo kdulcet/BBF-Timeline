@@ -191,50 +191,27 @@ class JMTimeline {
   }
 
   /**
-   * Compile timeline to flat pulse array for AudioWorklet
-   * Uses existing transition-aware pulse calculation (_getHzAtTime, _getNextPulseTime)
-   * to generate pre-calculated schedule
+   * Send journey map segments to AudioWorklet for on-demand calculation
    * 
-   * @param {number} sampleRate - Sample rate (default: 48000)
+   * @param {AudioWorkletNode} workletNode - The worklet node to send segments to
    * @param {number} carrierFrequency - Carrier frequency in Hz (default: 110)
-   * @returns {Array} Flat array of pulse events
+   * @param {number} checkGranularity - Check granularity in samples (default: 128)
    */
-  compileForWorklet(sampleRate = 48000, carrierFrequency = 110) {
-    const pulses = [];
-    const totalDuration = this.getTotalDuration();
-    
-    let currentTime = 0;
-    let pulseId = 0;
-    let channel = 'left'; // Alternating L/R for ISO synth
-    
-    // Use existing pulse calculation logic
-    while (currentTime < totalDuration) {
-      const currentHz = this._getHzAtTime(currentTime);
-      const interval = calculate32nInterval(currentHz);
-      
-      // Convert to sample position
-      const samplePosition = Math.round(currentTime * sampleRate);
-      const durationSamples = Math.round(interval * .8 * sampleRate); // 1.5 duty cycle
-      
-      pulses.push({
-        samplePosition,
-        durationSamples,
-        channel,
-        carrierFrequency,
-        beatHz: currentHz,  // Timeline Hz for binaural-style frequency split
-        pulseId: pulseId++
-      });
-      
-      // Alternate channels for ISO synth
-      channel = channel === 'left' ? 'right' : 'left';
-      
-      // Calculate next pulse time using transition-aware logic
-      const nextTime = this._getNextPulseTime(currentTime, currentHz);
-      currentTime = nextTime;
+  sendSegmentsToWorklet(workletNode, carrierFrequency = 110, checkGranularity = 128) {
+    if (!workletNode || !workletNode.port) {
+      console.error('[JMTimeline] Invalid worklet node');
+      return;
     }
     
-    console.log(`[JMTimeline] Compiled ${pulses.length} pulses for AudioWorklet (${totalDuration.toFixed(2)}s)`);
-    return pulses;
+    // Send raw segments for on-demand calculation
+    workletNode.port.postMessage({
+      type: 'loadJourneyMap',
+      segments: this.segments,
+      carrierFrequency: carrierFrequency,
+      checkGranularity: checkGranularity
+    });
+    
+    console.log(`[JMTimeline] Sent ${this.segments.length} segments to worklet (${this.getTotalDuration().toFixed(2)}s total, check every ${checkGranularity} samples)`);
   }
 
   // ============================================================================

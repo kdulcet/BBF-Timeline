@@ -558,15 +558,12 @@
                         console.log('[AudioWorklet] Message from processor:', event.data);
                     };
                     
-                    // Compile pulse schedule using timeline
-                    const pulseSchedule = timeline.compileForWorklet(audioContext.sampleRate, carrierHz);
-                    console.log(`[AudioWorklet] Compiled ${pulseSchedule.length} pulses for ${timeline.getTotalDuration().toFixed(2)}s timeline`);
-                    
-                    // Send schedule to worklet
-                    workletNode.port.postMessage({
-                        type: 'schedule',
-                        pulses: pulseSchedule
-                    });
+                    // Send journey map segments to worklet (not pre-calculated schedule)
+                    // Worklet will calculate Hz/pulses on-demand from segments
+                    // Check granularity: 128 samples = ~2.6ms at 48kHz (adjustable if needed)
+                    const checkGranularity = 1;  // Can reduce to 32 or 64 if timing issues occur
+                    timeline.sendSegmentsToWorklet(workletNode, carrierHz, checkGranularity);
+                    console.log(`[AudioWorklet] Journey map sent to worklet (check every ${checkGranularity} samples)`);
                     
                     // Store references for width control
                     window.isoWorkletWidth = {
@@ -595,6 +592,9 @@
                 } catch (error) {
                     console.error('[AudioWorklet] Failed to initialize:', error);
                 }
+                
+                // BINAURAL: Send journey map segments to binaural worklet
+                binauralSynth.loadJourneyMap(timeline.segments);
                 
                 // Start binaural synth (continuous tone)
                 binauralSynth.start();
