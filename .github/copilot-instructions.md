@@ -2,7 +2,11 @@
 
 * *FOLLOW MY INSTRUCTIONS TO THE LETTER*: This means your own features or interpreatations are unwanted unless first presented and approved.
 * Do *not* perform a commit under any circumstances unless you have specifically been asked to do so in the current prompt.
-* **IMPORTANT: When running git commands (commit, push, etc), ALWAYS use isBackground:true in run_in_terminal with SHORT messsages** - git commands hang without this!
+* **CRITICAL GIT COMMAND RULE**: When running git commands (commit, push, etc), **ALWAYS** use `isBackground:true` in `run_in_terminal`. Git commands will hang indefinitely without this flag.
+  - ✅ CORRECT: `run_in_terminal` with `isBackground: true` for ALL git operations
+  - ❌ WRONG: `run_in_terminal` with `isBackground: false` (causes terminal hangs)
+  - Keep commit messages SHORT (one line, no essays)
+  - Never chain multiple git commits without waiting for completion
 * Make no assumptions whatsoever as to ANYTHING outside of the prompt
 * If I say it doesn't work, it doesn't work. We troubleshoot until I say we have something that works.
 * DO NOT CREATE YOUR OWN TESTS unless specifically asked.

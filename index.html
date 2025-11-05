@@ -457,9 +457,22 @@
         </div>
         
         <div class="octave-container">
-            <label>Width [3]:</label>
-            <input type="number" id="width3" placeholder="0-100" min="0" max="100" step="1" value="100" 
-                   style="width: 120px; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #9C27B0; border-radius: 5px;">
+            <label>Width [1] (ISO):</label>
+            <input type="number" id="width_iso_combined" placeholder="0-100" min="0" max="100" step="1" value="100" 
+                   style="width: 120px; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #FF9800; border-radius: 5px;">
+        </div>
+        
+        <div class="octave-container">
+            <label>Width [2] (Binaural):</label>
+            <input type="number" id="width_binaural_combined" placeholder="0-100" min="0" max="100" step="1" value="100" 
+                   style="width: 120px; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #2196F3; border-radius: 5px;">
+        </div>
+        
+        <div class="octave-container">
+            <label>ISO Pulse Length:</label>
+            <input type="number" id="duty_cycle_combined" placeholder="0.3-1.75" min="0.05" max="1.75" step="0.05" value="0.5" 
+                   style="width: 120px; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #FF9800; border-radius: 5px;">
+            <span style="font-size: 12px; color: #666; margin-left: 8px;">(0.3 = short, 1.75 = long)</span>
         </div>
     </div>
     
@@ -597,13 +610,33 @@
             }
         });
         
-        // Width control [3] for combined synth
-        document.getElementById('width3').addEventListener('input', function(e) {
+        // Width control [1] (ISO) for combined synth
+        document.getElementById('width_iso_combined').addEventListener('input', function(e) {
             const widthValue = parseInt(e.target.value);
             
-            // Set combined synth width (0-100)
+            // Set ISO width in combined synth (0-100)
             if (window.combinedSynth) {
-                combinedSynth.setWidth(widthValue);
+                combinedSynth.setWidthISO(widthValue);
+            }
+        });
+        
+        // Width control [2] (Binaural) for combined synth
+        document.getElementById('width_binaural_combined').addEventListener('input', function(e) {
+            const widthValue = parseInt(e.target.value);
+            
+            // Set Binaural width in combined synth (0-100)
+            if (window.combinedSynth) {
+                combinedSynth.setWidthBinaural(widthValue);
+            }
+        });
+        
+        // Duty Cycle control for combined synth ISO pulses
+        document.getElementById('duty_cycle_combined').addEventListener('input', function(e) {
+            const dutyCycleValue = parseFloat(e.target.value);
+            
+            // Set duty cycle in combined synth (0.3-1.75)
+            if (window.combinedSynth) {
+                combinedSynth.setDutyCycle(dutyCycleValue);
             }
         });
         
@@ -767,9 +800,13 @@
             const initialVolume3 = parseFloat(document.getElementById('volume3').value) / 100;
             combinedSynth.setVolume(initialVolume3);
             
-            // Set initial width from width [3] input
-            const initialWidth3 = parseInt(document.getElementById('width3').value) || 100;
-            combinedSynth.setWidth(initialWidth3);
+            // Set initial width from width [1] (ISO) input
+            const initialWidthISO = parseInt(document.getElementById('width_iso_combined').value) || 100;
+            combinedSynth.setWidthISO(initialWidthISO);
+            
+            // Set initial width from width [2] (Binaural) input
+            const initialWidthBinaural = parseInt(document.getElementById('width_binaural_combined').value) || 100;
+            combinedSynth.setWidthBinaural(initialWidthBinaural);
             
             // Set initial crossfade (0.5 = 50/50 mix)
             const initialCrossfade = parseFloat(document.getElementById('crossfade').value) / 100;
@@ -778,6 +815,10 @@
             // Set initial carrier octave (0 = default)
             const initialOctave = parseInt(document.getElementById('carrier_octave').value);
             combinedSynth.setCarrierOctave(initialOctave);
+            
+            // Set initial duty cycle (0.5 = default)
+            const initialDutyCycle = parseFloat(document.getElementById('duty_cycle_combined').value) || 0.5;
+            combinedSynth.setDutyCycle(initialDutyCycle);
             
             console.log('Timeline initialized with segments:', segments);
             console.log('ISO Synth initialized - audio pulse system ready');
@@ -873,7 +914,7 @@
                 // ================================================================
                 // COMBINED SYNTH: Send journey map segments to combined worklet
                 // ================================================================
-                combinedSynth.loadJourneyMap(timeline.segments, carrierHz);
+                await combinedSynth.loadJourneyMap(timeline.segments, carrierHz);
                 
                 // Start combined synth (binaural + ISO in single worklet)
                 combinedSynth.start();
