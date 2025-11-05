@@ -67,12 +67,19 @@
  *       samplePosition: 0,           // Exact sample to trigger
  *       durationSamples: 6000,       // Length in samples (e.g., 125ms)
  *       channel: 'left',             // 'left' or 'right'
- *       carrierFrequency: 110,       // Sine wave Hz
+ *       carrierFrequency: 110,       // Base carrier frequency in Hz
+ *       beatHz: 4,                   // Timeline Hz for frequency split
  *       pulseId: 0                   // Unique identifier
  *     },
  *     // ... 295 more pulses
  *   ]
  * }
+ * 
+ * BINAURAL-STYLE FREQUENCY SPLIT:
+ *   - Left pulse:  frequency = carrierFrequency - (beatHz / 2)
+ *   - Right pulse: frequency = carrierFrequency + (beatHz / 2)
+ *   - Example: carrier=110Hz, beat=4Hz → L=108Hz, R=112Hz
+ *   - Creates frequency separation matching timeline Hz progression
  * 
  * ============================================================================
  * FACTORY PATTERN NOTES (For Future Worklets)
@@ -292,7 +299,14 @@ class Voice {
    * @param {number} currentSample - Current audio sample position
    */
   trigger(pulse, currentSample) {
-    this.frequency = pulse.carrierFrequency;
+    // Calculate frequency split based on channel (binaural-style)
+    // Left: carrier - (beat/2), Right: carrier + (beat/2)
+    if (pulse.channel === 'left') {
+      this.frequency = pulse.carrierFrequency - (pulse.beatHz / 2);
+    } else {
+      this.frequency = pulse.carrierFrequency + (pulse.beatHz / 2);
+    }
+    
     this.channel = pulse.channel;
     this.pulseId = pulse.pulseId;
     this.startSample = currentSample;

@@ -221,6 +221,7 @@ class JMTimeline {
         durationSamples,
         channel,
         carrierFrequency,
+        beatHz: currentHz,  // Timeline Hz for binaural-style frequency split
         pulseId: pulseId++
       });
       
