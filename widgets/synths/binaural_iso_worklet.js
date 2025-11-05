@@ -48,16 +48,10 @@ const DEFAULT_DUTY_CYCLE = 0.5;
 
 // ISO Pulse Frequency Randomization (0.0 = no randomization, 1.0 = full ±beatHz/2 range)
 // This creates pitch variation for mono compatibility and smoother perception
-
-/**
- * Hz calculation granularity (samples between recalculations)
- * 1 = Calculate every sample (smoothest, highest CPU)
- * 32 = Calculate every 32 samples (~0.7ms at 48kHz)
- * 128 = Calculate per block (~2.6ms at 48kHz)
- * Lower = smoother transitions, higher = better performance
- */
-const HZ_CHECK_GRANULARITY = 1;  // Per-sample for zero clicking
 const ISO_FREQUENCY_RANDOMIZATION = 0.0;  // 50% of the beatHz/2 range
+
+// Number of voices (5-voice architecture for production preset compatibility)
+const NUM_VOICES = 5;
 
 /**
  * ============================================================================
@@ -355,23 +349,50 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     super();
     
     // ========================================================================
-    // BINAURAL SYSTEM - Continuous tones (Phase-Locked)
+    // 5-VOICE ARCHITECTURE (Production Preset Compatibility)
     // ========================================================================
-    // Phase-locked synthesis: Single carrier + beat phase for both channels
-    // This eliminates drift by enforcing phase relationship every sample
-    this.carrierPhase = 0;  // Shared carrier phase for L/R channels
-    this.beatPhase = 0;     // Beat phase for frequency offset
+    // Each voice has independent:
+    // - octaveOffset: Frequency multiplier (-2 to +2 octaves)
+    // - volume: Linear gain (0.0-1.0)
+    // - width: Stereo field (-1.0 to +1.0)
+    // - crossfade: Binaural↔ISO mix (0.0-1.0)
+    // - dutyCycle: ISO pulse length (0.3-1.75)
+    //
+    // PHASE-LOCK GUARANTEE: All voices share this.beatPhase
+    // When beatPhase wraps (0→2π), ALL voices trigger ISO pulses simultaneously
+    //
+    this.voices = [];
+    for (let i = 0; i < NUM_VOICES; i++) {
+      this.voices.push({
+        // Voice parameters (runtime adjustable)
+        octaveOffset: 0,
+        volume: 1.0,
+        width: 1.0,
+        crossfade: 0.5,
+        dutyCycle: DEFAULT_DUTY_CYCLE,
+        
+        // Binaural oscillator state
+        binaural_phaseL: 0,
+        binaural_phaseR: 0,
+        
+        // ISO pulse state
+        iso_phaseL: 0,
+        iso_phaseR: 0,
+        iso_envelope: new AdsrEnvelope(sampleRate),
+        iso_active: false,
+        iso_frequencyL: 0,
+        iso_frequencyR: 0,
+        iso_startSample: 0,
+        iso_endSample: 0,
+        iso_releaseStartSample: 0
+      });
+    }
     
     // ========================================================================
-    // ISO SYSTEM - Discrete pulses
+    // SHARED PHASE (Phase-Lock Source of Truth)
     // ========================================================================
-    this.voicesISO = [];
-    for (let i = 0; i < 8; i++) {
-      this.voicesISO.push(new Voice(sampleRate, true));
-    }
-    this.beatPhase = 0;  // LFO phase accumulator (0 to 2π)
-    this.pulseId = 0;
-    this.channel = 'left';  // Alternating L/R for ISO pulses
+    this.beatPhase = 0;  // LFO phase accumulator (0 to 2π) - SHARED BY ALL VOICES
+    this.pulseCount = 0; // Counter for L/R alternation
     
     // ========================================================================
     // JOURNEY MAP DATA
@@ -379,22 +400,6 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     this.rawSegments = [];
     this.compiledSegments = [];
     this.carrierFrequency = 110;  // Base carrier (A2)
-    
-    // ========================================================================
-    // CONTROL PARAMETERS
-    // ========================================================================
-    this.volumeGain = 1.0;           // Master volume (0.0-1.0)
-    this.crossfade = 0.5;            // 0.0=binaural, 1.0=ISO
-    this.dutyCycle = DEFAULT_DUTY_CYCLE;  // ISO pulse duration
-    this.carrierOctave = 0;          // -2 to +2 octaves
-    
-    // Stereo width controls (separate for ISO and Binaural)
-    this.leftPan = -1.0;             // Legacy: combined width
-    this.rightPan = 1.0;
-    this.leftPanISO = -1.0;          // ISO-specific width
-    this.rightPanISO = 1.0;
-    this.leftPanBinaural = -1.0;     // Binaural-specific width
-    this.rightPanBinaural = 1.0;
     
     // ========================================================================
     // TIMING STATE
@@ -408,7 +413,9 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     // MESSAGE HANDLER
     // ========================================================================
     this.port.onmessage = (event) => {
-      if (event.data.type === 'loadJourneyMap') {
+      const { type, voiceIndex } = event.data;
+      
+      if (type === 'loadJourneyMap') {
         this.rawSegments = event.data.segments;
         this.compiledSegments = compileSegments(this.rawSegments);
         this.carrierFrequency = event.data.carrierFrequency || 110;
@@ -420,8 +427,7 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
         // Reset state
         this.currentSample = 0;
         this.beatPhase = 0;
-        this.pulseId = 0;
-        this.channel = 'left';
+        this.pulseCount = 0;
         this.isLoaded = true;
         
         this.port.postMessage({
@@ -430,83 +436,70 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
           totalDurationSeconds: this.totalDurationSamples / sampleRate
         });
         
-      } else if (event.data.type === 'start') {
+      } else if (type === 'start') {
         if (this.isLoaded) {
-          this.carrierPhase = 0;  // Reset carrier phase
-          this.beatPhase = 0;     // Reset beat phase
           this.isPlaying = true;
           this.currentSample = 0;
+          this.beatPhase = 0;
           this.port.postMessage({ type: 'started' });
         }
         
-      } else if (event.data.type === 'stop') {
+      } else if (type === 'stop') {
         this.isPlaying = false;
+        // Stop all ISO pulses
+        this.voices.forEach(v => {
+          v.iso_active = false;
+        });
         this.port.postMessage({ type: 'stopped' });
+      
+      // ======================================================================
+      // PER-VOICE CONTROLS
+      // ======================================================================
+      } else if (type === 'setVoiceOctave') {
+        if (voiceIndex >= 0 && voiceIndex < NUM_VOICES) {
+          this.voices[voiceIndex].octaveOffset = event.data.octave;
+        }
         
-      } else if (event.data.type === 'setVolume') {
-        this.volumeGain = event.data.gain;
+      } else if (type === 'setVoiceVolume') {
+        if (voiceIndex >= 0 && voiceIndex < NUM_VOICES) {
+          this.voices[voiceIndex].volume = Math.max(0, Math.min(1, event.data.volume));
+        }
         
-      } else if (event.data.type === 'setCrossfade') {
-        this.crossfade = Math.max(0, Math.min(1, event.data.value));
+      } else if (type === 'setVoiceWidth') {
+        if (voiceIndex >= 0 && voiceIndex < NUM_VOICES) {
+          this.voices[voiceIndex].width = Math.max(0, Math.min(1, event.data.width));
+        }
         
-      } else if (event.data.type === 'setDutyCycle') {
-        this.dutyCycle = event.data.dutyCycle;
+      } else if (type === 'setVoiceCrossfade') {
+        if (voiceIndex >= 0 && voiceIndex < NUM_VOICES) {
+          this.voices[voiceIndex].crossfade = Math.max(0, Math.min(1, event.data.crossfade));
+        }
         
-      } else if (event.data.type === 'setCarrierOctave') {
-        this.carrierOctave = Math.max(-2, Math.min(2, event.data.octave));
-        
-      } else if (event.data.type === 'setWidth') {
-        // Legacy: sets both ISO and Binaural width
-        this.leftPan = event.data.panL;
-        this.rightPan = event.data.panR;
-        this.leftPanISO = event.data.panL;
-        this.rightPanISO = event.data.panR;
-        this.leftPanBinaural = event.data.panL;
-        this.rightPanBinaural = event.data.panR;
-        
-      } else if (event.data.type === 'setWidthISO') {
-        // ISO-specific width
-        this.leftPanISO = event.data.panL;
-        this.rightPanISO = event.data.panR;
-        
-      } else if (event.data.type === 'setWidthBinaural') {
-        // Binaural-specific width
-        this.leftPanBinaural = event.data.panL;
-        this.rightPanBinaural = event.data.panR;
+      } else if (type === 'setVoiceDutyCycle') {
+        if (voiceIndex >= 0 && voiceIndex < NUM_VOICES) {
+          this.voices[voiceIndex].dutyCycle = Math.max(0.3, Math.min(1.75, event.data.dutyCycle));
+        }
       }
     };
     
     this.port.postMessage({ 
       type: 'initialized', 
-      binauralVoices: 2, 
-      isoVoices: this.voicesISO.length 
+      numVoices: NUM_VOICES
     });
   }
   
   /**
-   * Find free voice from ISO pool
-   */
-  _findFreeVoice() {
-    for (let voice of this.voicesISO) {
-      if (!voice.isActive()) {
-        return voice;
-      }
-    }
-    return null;
-  }
-  
-  /**
    * ========================================================================
-   * PROCESS() - Main Audio Callback
+   * PROCESS() - Main Audio Callback (5-Voice Architecture)
    * ========================================================================
    * Called by browser every 128 samples (render quantum)
+   * 
+   * PHASE-LOCK GUARANTEE:
+   * - Single this.beatPhase shared by ALL voices
+   * - Phase wrap triggers ALL voices simultaneously
+   * - All voices render from identical currentSample position
    */
   process(inputs, outputs, parameters) {
-    // Debug: Log first few process calls
-    if (this.currentSample < 256) {
-      console.log(`[Worklet process()] sample=${this.currentSample}, isLoaded=${this.isLoaded}, isPlaying=${this.isPlaying}`);
-    }
-    
     if (!this.isLoaded || !this.isPlaying) {
       return true;  // Keep processor alive
     }
@@ -515,21 +508,11 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     const outputR = outputs[0][1];
     
     if (!outputL || !outputR) {
-      console.log('[Worklet process()] No output buffers!');
       return true;
     }
     
     const blockSize = outputL.length;  // Always 128
-    
-    // Debug: Log that we're actually processing
-    if (this.currentSample === 0) {
-      console.log('[Worklet process()] Starting audio generation!');
-    }
-    
-    // Calculate crossfade gains (constant-power law)
-    const crossfadeAngle = this.crossfade * Math.PI / 2;
-    const binauralGain = Math.cos(crossfadeAngle);  // 1.0 → 0.0
-    const isoGain = Math.sin(crossfadeAngle);        // 0.0 → 1.0
+    const TWO_PI = 2 * Math.PI;
     
     // ========================================================================
     // SAMPLE LOOP - Process all 128 samples
@@ -537,168 +520,169 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < blockSize; i++) {
       
       // ======================================================================
-      // 1. CALCULATE HZ - Single source of truth for both systems
+      // 1. CALCULATE HZ - Single source of truth for ALL voices
       // ======================================================================
       const timeSeconds = this.currentSample / sampleRate;
       const beatHz = getHzAt(this.compiledSegments, timeSeconds);
       
-      // Calculate carrier frequency with octave adjustment (per-sample)
-      const carrierMultiplier = Math.pow(2, this.carrierOctave);
-      const actualCarrier = this.carrierFrequency * carrierMultiplier;
-      
       // ======================================================================
-      // 2. BINAURAL SYSTEM - Phase-Locked Continuous Tones
+      // 2. LFO PHASE ACCUMULATION - SHARED BY ALL VOICES
       // ======================================================================
-      // Calculate phase increments (omega = 2π × frequency / sampleRate)
-      const carrierOmega = 2 * Math.PI * actualCarrier / sampleRate;
-      const beatOmega = 2 * Math.PI * beatHz / sampleRate;
+      const omega = TWO_PI * beatHz / sampleRate;
+      this.beatPhase += omega;
       
-      // Accumulate carrier phase
-      this.carrierPhase += carrierOmega;
-      
-      // Wrap carrier phase smoothly to prevent clicking (modulo operation)
-      // Using while loop for proper wrapping in case of large jumps
-      while (this.carrierPhase >= 2 * Math.PI) {
-        this.carrierPhase -= 2 * Math.PI;
-      }
-      while (this.carrierPhase < 0) {
-        this.carrierPhase += 2 * Math.PI;
-      }
-      
-      // Accumulate beat phase (NEVER wrap - used continuously by binaural)
-      this.beatPhase += beatOmega;
-      
-      // Generate phase-locked samples using UNWRAPPED beatPhase
-      // Left channel: carrier - beat/2 (lower frequency)
-      // Right channel: carrier + beat/2 (higher frequency)
-      // Phase relationship enforced mathematically every sample → zero drift
-      // Sine is periodic, so unwrapped phase is fine (sin(x) = sin(x + 2πn))
-      const binauralLeftSample = Math.sin(this.carrierPhase - (this.beatPhase / 2));
-      const binauralRightSample = Math.sin(this.carrierPhase + (this.beatPhase / 2));
-      
-      // ======================================================================
-      // 3. ISO SYSTEM - Gnaural-style Continuous Carrier + Square LFO
-      // ======================================================================
-      // ARCHITECTURE (discovered from Gnaural analysis):
-      // - Continuous carrier wave (same as binaural, never restarted)
-      // - Square LFO with slight slew controls L/R channel visibility
-      // - At 20Hz: 50ms period = 25ms per channel + slight overlap
-      // - When summed to mono: continuous wave (no gaps)
-      // - Slew: 1-2ms absolute time for smooth edges (Gnaural spec)
-      
-      // Generate continuous ISO carrier (same frequency as binaural)
-      const isoCarrierSample = Math.sin(this.carrierPhase);
-      
-      // Calculate square LFO position from wrapped beat phase
-      const wrappedPhase = this.beatPhase % (2 * Math.PI);
-      const lfoProgress = wrappedPhase / (2 * Math.PI);  // 0.0 to 1.0
-      
-      // Calculate slew time: 3ms converted to phase units (increased for transitions)
-      const beatPeriod = 1.0 / beatHz;  // Period in seconds
-      const slewTime = 0.003;  // 3ms slew time (doubled for smooth transitions)
-      let slewPhase = slewTime / beatPeriod;  // Slew as fraction of cycle
-      
-      // Clamp slew phase to reasonable limits (prevent extremes at very low/high Hz)
-      const minSlewPhase = 0.01;   // Minimum 1% of cycle
-      const maxSlewPhase = 0.25;   // Maximum 25% of cycle
-      slewPhase = Math.max(minSlewPhase, Math.min(maxSlewPhase, slewPhase));
-      
-      // Square wave with duty cycle control
-      // dutyCycle = 0.5 means 50% on each channel (perfect square)
-      // dutyCycle > 0.5 means longer pulses with overlap
-      // dutyCycle < 0.5 means shorter pulses with gaps
-      const halfDuty = this.dutyCycle / 2;
-      
-      let isoLeftGain = 0;
-      let isoRightGain = 0;
-      
-      if (lfoProgress < 0.5) {
-        // First half: Left channel active
-        const leftEnd = halfDuty;
+      // Check for phase wraparound (2π crossing = trigger ALL voices)
+      if (this.beatPhase >= TWO_PI) {
+        this.beatPhase -= TWO_PI;
         
-        if (lfoProgress < slewPhase) {
-          // Slew in to left at cycle start (fade from 0)
-          const slewProgress = lfoProgress / slewPhase;
-          isoLeftGain = slewProgress;
-        } else if (lfoProgress < leftEnd - slewPhase) {
-          // Full left (between slew-in and slew-out)
-          isoLeftGain = 1.0;
-        } else if (lfoProgress < leftEnd) {
-          // Slew out from left (fade to 0)
-          const slewProgress = (lfoProgress - (leftEnd - slewPhase)) / slewPhase;
-          isoLeftGain = 1.0 - slewProgress;
+        // PHASE-LOCK: Trigger ISO pulse for ALL 5 voices simultaneously
+        for (let v = 0; v < NUM_VOICES; v++) {
+          const voice = this.voices[v];
+          
+          // Calculate carrier with voice's octave offset
+          const voiceCarrier = this.carrierFrequency * Math.pow(2, voice.octaveOffset);
+          
+          // Calculate pulse duration with voice's duty cycle
+          const pulseDurationSeconds = calculatePulseDuration(beatHz, voice.dutyCycle);
+          const pulseDurationSamples = Math.round(pulseDurationSeconds * sampleRate);
+          
+          // Calculate frequency with randomization
+          const randomOffset = (Math.random() * 2 - 1) * ISO_FREQUENCY_RANDOMIZATION;
+          const frequencyOffset = (beatHz / 2) * randomOffset;
+          const frequencyISO = voiceCarrier + frequencyOffset;
+          
+          // Alternate L/R channels based on global pulse count
+          const isLeftChannel = (this.pulseCount % 2 === 0);
+          
+          // Trigger pulse (set frequencies for L and R)
+          voice.iso_frequencyL = isLeftChannel ? frequencyISO : 0;
+          voice.iso_frequencyR = isLeftChannel ? 0 : frequencyISO;
+          voice.iso_phaseL = 0;
+          voice.iso_phaseR = 0;
+          
+          // Calculate envelope timing with minimum sustain
+          const releaseDuration = voice.iso_envelope.releaseSamples;
+          const minSustainSamples = Math.floor(0.005 * sampleRate); // 5ms
+          const minTotalSamples = releaseDuration + minSustainSamples;
+          const actualDurationSamples = Math.max(pulseDurationSamples, minTotalSamples);
+          
+          voice.iso_startSample = this.currentSample;
+          voice.iso_releaseStartSample = this.currentSample + actualDurationSamples - releaseDuration;
+          voice.iso_endSample = this.currentSample + actualDurationSamples;
+          voice.iso_active = true;
+          voice.iso_envelope.trigger();
         }
         
-        // Right channel stays at 0 during first half
-        isoRightGain = 0;
-      } else {
-        // Second half: Right channel active
-        const rightProgress = lfoProgress - 0.5;
-        const rightStart = 0;
-        const rightEnd = halfDuty;
+        this.pulseCount++;
+      }
+      
+      // ======================================================================
+      // 3. RENDER ALL 5 VOICES
+      // ======================================================================
+      let sumL = 0;
+      let sumR = 0;
+      
+      for (let v = 0; v < NUM_VOICES; v++) {
+        const voice = this.voices[v];
         
-        if (rightProgress < slewPhase) {
-          // Slew in to right (fade from 0)
-          const slewProgress = rightProgress / slewPhase;
-          isoRightGain = slewProgress;
-        } else if (rightProgress < rightEnd - slewPhase) {
-          // Full right (between slew-in and slew-out)
-          isoRightGain = 1.0;
-        } else if (rightProgress < rightEnd) {
-          // Slew out from right (fade to 0)
-          const slewProgress = (rightProgress - (rightEnd - slewPhase)) / slewPhase;
-          isoRightGain = 1.0 - slewProgress;
+        // Skip silent voices
+        if (voice.volume <= 0.001) continue;
+        
+        // Calculate voice carrier with octave offset
+        const voiceCarrier = this.carrierFrequency * Math.pow(2, voice.octaveOffset);
+        
+        // ------------------------------------------------------------------
+        // BINAURAL: Continuous L/R tones
+        // ------------------------------------------------------------------
+        const freqL_binaural = voiceCarrier - (beatHz / 2);
+        const freqR_binaural = voiceCarrier + (beatHz / 2);
+        
+        const sampleL_binaural = Math.sin(voice.binaural_phaseL);
+        const sampleR_binaural = Math.sin(voice.binaural_phaseR);
+        
+        voice.binaural_phaseL += (TWO_PI * freqL_binaural) / sampleRate;
+        voice.binaural_phaseR += (TWO_PI * freqR_binaural) / sampleRate;
+        
+        // Wrap phases
+        if (voice.binaural_phaseL >= TWO_PI) voice.binaural_phaseL -= TWO_PI;
+        if (voice.binaural_phaseR >= TWO_PI) voice.binaural_phaseR -= TWO_PI;
+        
+        // ------------------------------------------------------------------
+        // ISO: Discrete pulses
+        // ------------------------------------------------------------------
+        let sampleL_iso = 0;
+        let sampleR_iso = 0;
+        
+        if (voice.iso_active) {
+          // Check if release should start
+          if (this.currentSample >= voice.iso_releaseStartSample && voice.iso_envelope.stage !== 'release') {
+            voice.iso_envelope.release();
+          }
+          
+          // Check if envelope ended
+          if (!voice.iso_envelope.isActive()) {
+            voice.iso_active = false;
+          } else {
+            // Generate ISO samples
+            if (voice.iso_frequencyL > 0) {
+              sampleL_iso = Math.sin(voice.iso_phaseL);
+              voice.iso_phaseL += (TWO_PI * voice.iso_frequencyL) / sampleRate;
+              if (voice.iso_phaseL >= TWO_PI) voice.iso_phaseL -= TWO_PI;
+            }
+            
+            if (voice.iso_frequencyR > 0) {
+              sampleR_iso = Math.sin(voice.iso_phaseR);
+              voice.iso_phaseR += (TWO_PI * voice.iso_frequencyR) / sampleRate;
+              if (voice.iso_phaseR >= TWO_PI) voice.iso_phaseR -= TWO_PI;
+            }
+            
+            // Apply envelope
+            const env = voice.iso_envelope.process();
+            sampleL_iso *= env;
+            sampleR_iso *= env;
+          }
         }
+        
+        // ------------------------------------------------------------------
+        // CROSSFADE: Blend binaural and ISO with constant-power
+        // ------------------------------------------------------------------
+        const crossfadeAngle = voice.crossfade * Math.PI / 2;
+        const binauralGain = Math.cos(crossfadeAngle);  // 1.0 → 0.0
+        const isoGain = Math.sin(crossfadeAngle);        // 0.0 → 1.0
+        
+        const mixedL = (sampleL_binaural * binauralGain) + (sampleL_iso * isoGain);
+        const mixedR = (sampleR_binaural * binauralGain) + (sampleR_iso * isoGain);
+        
+        // ------------------------------------------------------------------
+        // WIDTH: Constant-power panning
+        // ------------------------------------------------------------------
+        const pan = voice.width;  // 0.0 = mono, 1.0 = full stereo
+        const panL = -pan;
+        const panR = pan;
+        
+        const angleL = (panL + 1) * Math.PI / 4;
+        const angleR = (panR + 1) * Math.PI / 4;
+        
+        const gainL_L = Math.cos(angleL);
+        const gainL_R = Math.sin(angleL);
+        const gainR_L = Math.cos(angleR);
+        const gainR_R = Math.sin(angleR);
+        
+        const widthMixedL = (mixedL * gainL_L) + (mixedR * gainR_L);
+        const widthMixedR = (mixedL * gainL_R) + (mixedR * gainR_R);
+        
+        // ------------------------------------------------------------------
+        // VOLUME: Apply voice volume
+        // ------------------------------------------------------------------
+        sumL += widthMixedL * voice.volume;
+        sumR += widthMixedR * voice.volume;
       }
       
-      // Apply LFO gains to continuous carrier
-      const isoLeftSample = isoCarrierSample * isoLeftGain;
-      const isoRightSample = isoCarrierSample * isoRightGain;
-      
       // ======================================================================
-      // 4. STEREO WIDTH - Apply SEPARATELY to Binaural and ISO
+      // 4. OUTPUT - Write to buffers with safety headroom
       // ======================================================================
-      // Apply width to Binaural voices
-      const binauralLeftPanAngle = (this.leftPanBinaural + 1) * Math.PI / 4;
-      const binauralLeftGainL = Math.cos(binauralLeftPanAngle);
-      const binauralLeftGainR = Math.sin(binauralLeftPanAngle);
-      
-      const binauralRightPanAngle = (this.rightPanBinaural + 1) * Math.PI / 4;
-      const binauralRightGainL = Math.cos(binauralRightPanAngle);
-      const binauralRightGainR = Math.sin(binauralRightPanAngle);
-      
-      const binauralMixedL = (binauralLeftSample * binauralLeftGainL) + (binauralRightSample * binauralRightGainL);
-      const binauralMixedR = (binauralLeftSample * binauralLeftGainR) + (binauralRightSample * binauralRightGainR);
-      
-      // Apply width to ISO voices
-      const isoLeftPanAngle = (this.leftPanISO + 1) * Math.PI / 4;
-      const isoLeftGainL = Math.cos(isoLeftPanAngle);
-      const isoLeftGainR = Math.sin(isoLeftPanAngle);
-      
-      const isoRightPanAngle = (this.rightPanISO + 1) * Math.PI / 4;
-      const isoRightGainL = Math.cos(isoRightPanAngle);
-      const isoRightGainR = Math.sin(isoRightPanAngle);
-      
-      const isoMixedL = (isoLeftSample * isoLeftGainL) + (isoRightSample * isoRightGainL);
-      const isoMixedR = (isoLeftSample * isoLeftGainR) + (isoRightSample * isoRightGainR);
-      
-      // ======================================================================
-      // 5. CROSSFADE MIX - Blend width-adjusted binaural and ISO with constant-power
-      // ======================================================================
-      const mixedL = (binauralMixedL * binauralGain) + (isoMixedL * isoGain);
-      const mixedR = (binauralMixedR * binauralGain) + (isoMixedR * isoGain);
-      
-      // ======================================================================
-      // 6. OUTPUT - Write to buffers with volume control
-      // ======================================================================
-      outputL[i] = mixedL * this.volumeGain * 0.3;  // 0.3 safety headroom
-      outputR[i] = mixedR * this.volumeGain * 0.3;
-      
-      // Debug: Log first non-zero sample
-      if ((outputL[i] !== 0 || outputR[i] !== 0) && this.currentSample < 48000) {
-        console.log(`[Worklet] First audio! sample=${this.currentSample}, L=${outputL[i].toFixed(4)}, R=${outputR[i].toFixed(4)}, beatHz=${beatHz.toFixed(2)}, volumeGain=${this.volumeGain}`);
-        this.currentSample = 48000; // Only log once
-      }
+      outputL[i] = sumL * 0.2;  // Headroom for 5 voices
+      outputR[i] = sumR * 0.2;
       
       this.currentSample++;
     }
@@ -706,17 +690,15 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     // ========================================================================
     // COMPLETION CHECK
     // ========================================================================
-    // Phase-locked binaural is always active when playing, so only check ISO voices
-    const allVoicesSilent = this.voicesISO.every(v => !v.isActive());
+    const allVoicesSilent = this.voices.every(v => !v.iso_active);
     const pastEnd = this.currentSample >= this.totalDurationSamples;
     
     if (allVoicesSilent && pastEnd && this.isLoaded) {
       this.port.postMessage({ type: 'completed' });
       this.isPlaying = false;
-      return true;
     }
     
-    return true;  // Keep processing
+    return true;  // Keep processor alive
   }
 }
 
