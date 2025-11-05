@@ -220,6 +220,145 @@
             text-align: center;
         }
         
+        .combined-controls {
+            margin: 30px 0;
+            padding: 20px;
+            background: white;
+            border: 2px solid #9C27B0;
+            border-radius: 8px;
+        }
+        
+        .combined-controls h2 {
+            color: #9C27B0;
+            margin-top: 0;
+        }
+        
+        .crossfader-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .crossfader-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .crossfader-slider {
+            flex: 1;
+            height: 40px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(to right, #2196F3 0%, #9C27B0 50%, #FF9800 100%);
+            outline: none;
+            border-radius: 20px;
+        }
+        
+        .crossfader-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 30px;
+            height: 30px;
+            background: white;
+            border: 3px solid #9C27B0;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        .crossfader-slider::-moz-range-thumb {
+            width: 30px;
+            height: 30px;
+            background: white;
+            border: 3px solid #9C27B0;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        .crossfader-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            font-weight: bold;
+            color: #666;
+        }
+        
+        .crossfader-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #9C27B0;
+            min-width: 100px;
+            text-align: center;
+        }
+        
+        .octave-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .octave-container label {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .octave-select {
+            padding: 8px 15px;
+            font-size: 16px;
+            border: 2px solid #9C27B0;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .combined-volume {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .combined-volume label {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .combined-volume-slider {
+            flex: 1;
+            height: 8px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #ddd;
+            outline: none;
+            border-radius: 5px;
+        }
+        
+        .combined-volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #9C27B0;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        .combined-volume-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #9C27B0;
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+        }
+        
+        .combined-volume-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #9C27B0;
+            min-width: 50px;
+        }
 
     </style>
 </head>
@@ -280,6 +419,47 @@
                 <div class="input-label">s</div>
                 <input type="number" id="plateau3_time" placeholder="Seconds" step="0.1" value="5">
             </div>
+        </div>
+    </div>
+    
+    <div class="combined-controls">
+        <h2>🎛️ Combined Synth (Binaural + ISO)</h2>
+        
+        <div class="crossfader-container">
+            <div class="crossfader-row">
+                <label style="font-weight: bold; font-size: 16px;">Crossfade:</label>
+                <input type="range" id="crossfade" class="crossfader-slider" 
+                       min="0" max="100" value="50" step="1">
+                <span class="crossfader-value" id="crossfade-value">50% MIX</span>
+            </div>
+            <div class="crossfader-labels">
+                <span>← Binaural (Continuous)</span>
+                <span>ISO (Pulses) →</span>
+            </div>
+        </div>
+        
+        <div class="octave-container">
+            <label>Carrier Octave:</label>
+            <select id="carrier_octave" class="octave-select">
+                <option value="-2">-2 (Down 2 octaves)</option>
+                <option value="-1">-1 (Down 1 octave)</option>
+                <option value="0" selected>0 (Default)</option>
+                <option value="1">+1 (Up 1 octave)</option>
+                <option value="2">+2 (Up 2 octaves)</option>
+            </select>
+        </div>
+        
+        <div class="combined-volume">
+            <label>Volume [3]:</label>
+            <input type="range" id="volume3" class="combined-volume-slider" 
+                   min="0" max="100" value="0" step="1">
+            <span class="combined-volume-value" id="volume3-value">0%</span>
+        </div>
+        
+        <div class="octave-container">
+            <label>Width [3]:</label>
+            <input type="number" id="width3" placeholder="0-100" min="0" max="100" step="1" value="100" 
+                   style="width: 120px; padding: 8px; font-size: 16px; text-align: center; border: 2px solid #9C27B0; border-radius: 5px;">
         </div>
     </div>
     
@@ -366,6 +546,64 @@
             // Set binaural synth width (0-100)
             if (window.binauralSynth) {
                 binauralSynth.setWidth(widthValue);
+            }
+        });
+        
+        // ========================================================================
+        // COMBINED SYNTH CONTROLS - Crossfade, Octave, Volume, Width
+        // ========================================================================
+        
+        // Crossfade slider (0-100 -> 0.0-1.0)
+        document.getElementById('crossfade').addEventListener('input', function(e) {
+            const crossfadePercent = parseInt(e.target.value);
+            const crossfadeNormalized = crossfadePercent / 100;  // 0.0-1.0
+            
+            // Update label
+            let label;
+            if (crossfadePercent === 0) {
+                label = "100% Binaural";
+            } else if (crossfadePercent === 100) {
+                label = "100% ISO";
+            } else {
+                label = crossfadePercent + "% MIX";
+            }
+            document.getElementById('crossfade-value').textContent = label;
+            
+            // Set combined synth crossfade
+            if (window.combinedSynth) {
+                combinedSynth.setCrossfade(crossfadeNormalized);
+            }
+        });
+        
+        // Carrier octave control
+        document.getElementById('carrier_octave').addEventListener('change', function(e) {
+            const octave = parseInt(e.target.value);
+            
+            // Set combined synth carrier octave
+            if (window.combinedSynth) {
+                combinedSynth.setCarrierOctave(octave);
+            }
+        });
+        
+        // Volume slider [3] for combined synth
+        document.getElementById('volume3').addEventListener('input', function(e) {
+            const volumePercent = e.target.value;
+            document.getElementById('volume3-value').textContent = volumePercent + '%';
+            
+            // Set combined synth volume (0-100% -> 0.0-1.0)
+            if (window.combinedSynth) {
+                const volumeNormalized = volumePercent / 100;
+                combinedSynth.setVolume(volumeNormalized);
+            }
+        });
+        
+        // Width control [3] for combined synth
+        document.getElementById('width3').addEventListener('input', function(e) {
+            const widthValue = parseInt(e.target.value);
+            
+            // Set combined synth width (0-100)
+            if (window.combinedSynth) {
+                combinedSynth.setWidth(widthValue);
             }
         });
         
@@ -514,9 +752,37 @@
             const initialWidth2 = parseInt(document.getElementById('width2').value) || 100;
             binauralSynth.setWidth(initialWidth2);
             
+            // ====================================================================
+            // Initialize Combined Synth (Binaural + ISO)
+            // ====================================================================
+            window.combinedSynth = combinedSynth = new BinauralISOSynth(audioContext);
+            
+            // Load combined worklet
+            await combinedSynth.init();
+            
+            // Set initial carrier frequency for combined synth
+            combinedSynth.setCarrierFrequency(initialCarrierHz);
+            
+            // Set initial volume from slider [3]
+            const initialVolume3 = parseFloat(document.getElementById('volume3').value) / 100;
+            combinedSynth.setVolume(initialVolume3);
+            
+            // Set initial width from width [3] input
+            const initialWidth3 = parseInt(document.getElementById('width3').value) || 100;
+            combinedSynth.setWidth(initialWidth3);
+            
+            // Set initial crossfade (0.5 = 50/50 mix)
+            const initialCrossfade = parseFloat(document.getElementById('crossfade').value) / 100;
+            combinedSynth.setCrossfade(initialCrossfade);
+            
+            // Set initial carrier octave (0 = default)
+            const initialOctave = parseInt(document.getElementById('carrier_octave').value);
+            combinedSynth.setCarrierOctave(initialOctave);
+            
             console.log('Timeline initialized with segments:', segments);
             console.log('ISO Synth initialized - audio pulse system ready');
             console.log('Binaural Synth initialized - continuous tone system ready');
+            console.log('Combined Synth initialized - binaural+ISO hybrid system ready');
         }
         
         // Play/Stop button functionality - timeline and audio control
@@ -604,6 +870,15 @@
                 // Start binaural synth (continuous tone)
                 binauralSynth.start();
                 
+                // ================================================================
+                // COMBINED SYNTH: Send journey map segments to combined worklet
+                // ================================================================
+                combinedSynth.loadJourneyMap(timeline.segments, carrierHz);
+                
+                // Start combined synth (binaural + ISO in single worklet)
+                combinedSynth.start();
+                console.log('[Combined Synth] Started - binaural+ISO hybrid playing');
+                
                 // Start status polling (separate from pulse events)
                 startTimelineTracking();
                 
@@ -636,6 +911,12 @@
                 if (binauralSynth) {
                     binauralSynth.dispose();
                     binauralSynth = null; // Clear reference
+                }
+                
+                // Stop combined synth
+                if (combinedSynth) {
+                    combinedSynth.stop();
+                    console.log('[Combined Synth] Stopped');
                 }
                 
                 // Stop status polling
@@ -881,5 +1162,6 @@
     <!-- Import Synth Systems -->
     <script src="widgets/synths/iso_synth.js"></script>
     <script src="widgets/synths/binaural_synth.js"></script>
+    <script src="widgets/synths/binaural_iso_synth.js"></script>
 </body>
 </html>
