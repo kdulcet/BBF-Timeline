@@ -40,7 +40,7 @@ class BinauralSynth {
     
     this.setupAudioGraph();
     
-    console.log('Binaural Synth initialized (worklet pending)');
+    // console.log('Binaural Synth initialized (worklet pending)');
   }
   
   /**
@@ -68,19 +68,19 @@ class BinauralSynth {
       // Message handler for worklet feedback
       this.workletNode.port.onmessage = (event) => {
         if (event.data.type === 'journeyMapLoaded') {
-          console.log(`[Binaural] ✅ Journey map loaded: ${event.data.segmentCount} segments, ${event.data.totalDurationSeconds.toFixed(1)}s`);
+          // console.log(`[Binaural] ✅ Journey map loaded: ${event.data.segmentCount} segments, ${event.data.totalDurationSeconds.toFixed(1)}s`);
         } else if (event.data.type === 'started') {
-          console.log('[Binaural] ▶️  Audio started');
+          // console.log('[Binaural] ▶️  Audio started');
         } else if (event.data.type === 'stopped') {
-          console.log('[Binaural] ⏹️  Audio stopped');
+          // console.log('[Binaural] ⏹️  Audio stopped');
         } else if (event.data.type === 'completed') {
-          console.log('[Binaural] ✅ Timeline completed');
+          // console.log('[Binaural] ✅ Timeline completed');
           this.isRunning = false;
         }
       };
       
       this.workletReady = true;
-      console.log('[Binaural] ✅ Worklet loaded and ready');
+      // console.log('[Binaural] ✅ Worklet loaded and ready');
       
     } catch (error) {
       console.error('[Binaural] ❌ Failed to load worklet:', error);
@@ -116,7 +116,7 @@ class BinauralSynth {
       return;
     }
     
-    console.log(`[Binaural] 📨 Sending journey map: ${segments.length} segments, carrier=${this.carrierFrequency}Hz`);
+    // console.log(`[Binaural] 📨 Sending journey map: ${segments.length} segments, carrier=${this.carrierFrequency}Hz`);
     
     // Send segments to worklet
     this.workletNode.port.postMessage({
@@ -151,7 +151,7 @@ class BinauralSynth {
     // Start audio generation in worklet
     this.workletNode.port.postMessage({ type: 'start' });
     
-    console.log(`[Binaural] ▶️  Started: Carrier=${this.carrierFrequency}Hz`);
+    // console.log(`[Binaural] ▶️  Started: Carrier=${this.carrierFrequency}Hz`);
   }
   
   /**
@@ -165,7 +165,7 @@ class BinauralSynth {
     // Stop audio generation in worklet
     this.workletNode.port.postMessage({ type: 'stop' });
     
-    console.log('[Binaural] ⏹️  Stopped');
+    // console.log('[Binaural] ⏹️  Stopped');
   }
   
   /**
@@ -189,7 +189,7 @@ class BinauralSynth {
       });
     }
     
-    console.log(`[Binaural] 🎵 Carrier frequency set to: ${this.carrierFrequency}Hz`);
+    // console.log(`[Binaural] 🎵 Carrier frequency set to: ${this.carrierFrequency}Hz`);
   }
   
   /**
@@ -199,7 +199,7 @@ class BinauralSynth {
   setWidth(width) {
     this.width = Math.max(0, Math.min(100, width));
     this.updateWidth();
-    console.log(`[Binaural] 📏 Width set to: ${this.width}%`);
+    // console.log(`[Binaural] 📏 Width set to: ${this.width}%`);
   }
   
   /**
@@ -248,7 +248,7 @@ class BinauralSynth {
       gainDb: gainDb
     });
     
-    console.log(`[Binaural] 🔊 Volume set to: ${(clamped * 100).toFixed(0)}% (${gainDb.toFixed(1)}dB)`);
+    // console.log(`[Binaural] 🔊 Volume set to: ${(clamped * 100).toFixed(0)}% (${gainDb.toFixed(1)}dB)`);
   }
   
   /**
@@ -299,6 +299,6 @@ class BinauralSynth {
     }
     
     this.workletReady = false;
-    console.log('[Binaural] 🗑️  Disposed');
+    // console.log('[Binaural] 🗑️  Disposed');
   }
 }

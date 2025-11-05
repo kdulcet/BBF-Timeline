@@ -50,7 +50,7 @@ class ISOSynth {
     // DISABLED: Old node-based pulse generation (replaced by AudioWorklet)
     // this.setupEventListeners();
     
-    console.log('ISO Synth initialized - Alternating L/R architecture ready');
+    // console.log('ISO Synth initialized - Alternating L/R architecture ready');
   }
   
   /**
@@ -81,7 +81,7 @@ class ISOSynth {
   setWidth(width) {
     this.width = Math.max(0, Math.min(100, width));
     this.updateWidth();
-    console.log(`ISO Synth width set to: ${this.width}%`);
+    // console.log(`ISO Synth width set to: ${this.width}%`);
   }
   
   /**
@@ -117,7 +117,7 @@ class ISOSynth {
       this.setWidth(0);    // Mono/center
     }
     
-    console.log(`Stereo mode: ${mode} (L=${this.channels.left.panNode.pan.value}, R=${this.channels.right.panNode.pan.value})`);
+    // console.log(`Stereo mode: ${mode} (L=${this.channels.left.panNode.pan.value}, R=${this.channels.right.panNode.pan.value})`);
   }
   
   /**
@@ -126,7 +126,7 @@ class ISOSynth {
    */
   setCarrierFrequency(frequency) {
     this.carrierFrequency = Math.max(20, Math.min(20000, frequency)); // Human hearing range
-    console.log(`ISO Synth carrier frequency set to: ${this.carrierFrequency}Hz`);
+    // console.log(`ISO Synth carrier frequency set to: ${this.carrierFrequency}Hz`);
   }
 
   /**
@@ -163,7 +163,7 @@ class ISOSynth {
     
     this.isRunning = true;
     this.pulseCounter = 0; // Reset pulse counter on start
-    console.log('ISO Synth started - listening for pulse events');
+    // console.log('ISO Synth started - listening for pulse events');
   }
   
   /**
@@ -185,7 +185,7 @@ class ISOSynth {
       this.channels.right.activePulses.clear();
     }
     
-    console.log('ISO Synth stopped - L/R pulse generation disabled');
+    // console.log('ISO Synth stopped - L/R pulse generation disabled');
   }
   
   /**
@@ -218,7 +218,7 @@ class ISOSynth {
     // Null out audioContext reference
     this.audioContext = null;
     
-    console.log('ISO Synth disposed - L/R channels and all resources cleaned up');
+    // console.log('ISO Synth disposed - L/R channels and all resources cleaned up');
   }
 }
 
