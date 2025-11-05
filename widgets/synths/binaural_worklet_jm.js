@@ -318,19 +318,23 @@ class BinauralProcessor extends AudioWorkletProcessor {
       if (this.triggerEnabled) {
         // Calculate L-R difference (timing extraction signal)
         const diff = outputL[i] - outputR[i];
+        const absDiff = Math.abs(diff);
         
         // Decrement cooldown if active
         if (this.cooldownCounter > 0) {
           this.cooldownCounter--;
         } else {
-          // Zero-crossing detection (rising edge)
-          if (this.lastDiff < 0 && diff >= 0) {
-            // TRIGGER DETECTED
+          // PEAK DETECTION: Trigger when amplitude exceeds threshold
+          // and is greater than previous sample (rising to peak)
+          const threshold = 0.27;  // Adjust this value (0.0 to 1.0)
+          
+          if (absDiff > threshold && absDiff > Math.abs(this.lastDiff)) {
+            // TRIGGER DETECTED (PEAK)
             this.triggerCount++;
             
-            // Calculate adaptive cooldown (half beat period)
+            // Calculate adaptive cooldown (full beat period)
             const beatPeriodSamples = sampleRate / beatHz;
-            this.cooldownCounter = Math.floor(beatPeriodSamples / 2);
+            this.cooldownCounter = Math.floor(beatPeriodSamples * 0.9);  // 90% of beat period
             
             // Calculate time since last trigger
             const samplesSinceLastTrigger = this.currentSample - this.lastTriggerSample;
@@ -339,10 +343,19 @@ class BinauralProcessor extends AudioWorkletProcessor {
             // Log trigger event
             console.log(
               `🎯 Trigger #${this.triggerCount} @ sample ${this.currentSample + i}, ` +
-              `beatHz=${beatHz.toFixed(2)}, ` +
+              `beatHz=${beatHz.toFixed(2)}, peak=${absDiff.toFixed(3)}, ` +
               `cooldown=${this.cooldownCounter} samples (${(this.cooldownCounter / sampleRate * 1000).toFixed(2)}ms), ` +
               `interval=${timeSinceLastTrigger}ms`
             );
+            
+            // Send trigger event to main thread (for ISO worklet)
+            this.port.postMessage({
+              type: 'trigger',
+              triggerCount: this.triggerCount,
+              beatHz: beatHz,
+              samplePosition: this.currentSample + i,
+              peakAmplitude: absDiff
+            });
             
             this.lastTriggerSample = this.currentSample + i;
           }

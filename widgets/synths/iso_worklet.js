@@ -294,6 +294,7 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
     this.nextPulseSample = 0;
     this.pulseId = 0;
     this.channel = 'left';  // Alternating L/R
+    this.triggerPulse = false;  // Manual trigger flag
     
     // Stereo width control
     this.leftPan = -1.0;
@@ -333,6 +334,11 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
       } else if (event.data.type === 'setWidth') {
         this.leftPan = event.data.panL;
         this.rightPan = event.data.panR;
+        
+      } else if (event.data.type === 'trigger') {
+        // Manual trigger from binaural worklet (via main thread)
+        // Spawn a pulse immediately
+        this.triggerPulse = true;
         
       } else if (event.data.type === 'schedule') {
         // Legacy support - ignore pre-calculated schedules
@@ -380,44 +386,37 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < blockSize; i++) {
       
       // ======================================================================
-      // 1. PULSE TRIGGERING - Check every N samples (configurable)
+      // 1. PULSE TRIGGERING - Manual trigger only (from binaural worklet)
       // ======================================================================
-      // Check if it's time to evaluate pulse triggers
-      if (i % this.checkGranularity === 0) {
-        // Check if we need a new pulse
-        while (this.currentSample >= this.nextPulseSample && this.currentSample < this.totalDurationSamples) {
-          // Calculate Hz at exact trigger sample
-          const hz = getHzAtSample(this.compiledSegments, this.currentSample, sampleRate);
-          
-          // Calculate pulse duration
-          const pulseDurationSeconds = calculatePulseDuration(hz, 0.8);
-          const pulseDurationSamples = Math.round(pulseDurationSeconds * sampleRate);
-          
-          // Calculate frequency split (binaural-style)
-          const frequency = this.channel === 'left' 
-            ? this.carrierFrequency - (hz / 2)
-            : this.carrierFrequency + (hz / 2);
-          
-          // Find free voice and trigger
-          const voice = this._findFreeVoice();
-          if (voice) {
-            voice.trigger(frequency, this.channel, this.pulseId, this.currentSample, pulseDurationSamples);
-            
-            if (this.pulseId === 0) {
-              this.port.postMessage({ type: 'firstPulseTriggered', sample: this.currentSample });
-            }
-          } else {
-            this.port.postMessage({ type: 'noFreeVoice', pulseId: this.pulseId });
-          }
-          
-          // Alternate channels
-          this.channel = this.channel === 'left' ? 'right' : 'left';
-          this.pulseId++;
-          
-          // Calculate next pulse sample using helper function
-          this.nextPulseSample = getNextPulseSample(this.compiledSegments, this.currentSample, sampleRate);
+      // Check for manual trigger (from binaural worklet)
+      if (this.triggerPulse) {
+        // Calculate Hz at current sample
+        const hz = getHzAtSample(this.compiledSegments, this.currentSample, sampleRate);
+        
+        // Calculate pulse duration
+        const pulseDurationSeconds = calculatePulseDuration(hz, 0.8);
+        const pulseDurationSamples = Math.round(pulseDurationSeconds * sampleRate);
+        
+        // Calculate frequency split (binaural-style)
+        const frequency = this.channel === 'left' 
+          ? this.carrierFrequency - (hz / 2)
+          : this.carrierFrequency + (hz / 2);
+        
+        // Find free voice and trigger
+        const voice = this._findFreeVoice();
+        if (voice) {
+          voice.trigger(frequency, this.channel, this.pulseId, this.currentSample, pulseDurationSamples);
+          console.log(`🔊 ISO Pulse #${this.pulseId} triggered by binaural peak @ sample ${this.currentSample}, Hz=${hz.toFixed(2)}, dur=${pulseDurationSamples} samples`);
         }
+        
+        // Alternate channels
+        this.channel = this.channel === 'left' ? 'right' : 'left';
+        this.pulseId++;
+        this.triggerPulse = false;  // Reset flag
       }
+      
+      // SEGMENT-BASED AUTO-TRIGGERING DISABLED
+      // Now only triggers on binaural peak events
       
       // ======================================================================
       // 2. RELEASE CHECK - Check if any voices should start release

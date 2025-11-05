@@ -498,6 +498,11 @@
                 binauralSynth.workletNode.port.onmessage = (event) => {
                     if (event.data.type === 'debug') {
                         console.log(`[Binaural Worklet] ${event.data.msg}`);
+                    } else if (event.data.type === 'trigger') {
+                        // Forward trigger to ISO worklet
+                        if (workletNode) {
+                            workletNode.port.postMessage({ type: 'trigger' });
+                        }
                     }
                 };
             }
