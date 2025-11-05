@@ -195,9 +195,12 @@ class JMTimeline {
    * 
    * @param {AudioWorkletNode} workletNode - The worklet node to send segments to
    * @param {number} carrierFrequency - Carrier frequency in Hz (default: 110)
-   * @param {number} checkGranularity - Check granularity in samples (default: 128)
+   * @param {number} checkGranularity - How often to check for new pulses in samples (default: 32)
+   *                                     32 = check 4 times per render quantum (~0.7ms at 48kHz)
+   *                                     128 = check once per render quantum (~2.6ms at 48kHz)
+   *                                     1 = check every sample (highest CPU, perfect accuracy)
    */
-  sendSegmentsToWorklet(workletNode, carrierFrequency = 110, checkGranularity = 128) {
+  sendSegmentsToWorklet(workletNode, carrierFrequency = 110, checkGranularity = 32) {
     if (!workletNode || !workletNode.port) {
       console.error('[JMTimeline] Invalid worklet node');
       return;

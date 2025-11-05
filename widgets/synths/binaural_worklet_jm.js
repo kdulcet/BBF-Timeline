@@ -174,16 +174,6 @@ class BinauralProcessor extends AudioWorkletProcessor {
     this.isLoaded = false;
     this.isPlaying = false;
     
-    // ========================================================================
-    // TRIGGER DETECTION SYSTEM (Phase 1 - Non-Destructive)
-    // ========================================================================
-    // Zero-crossing detection for peak timing extraction
-    this.triggerEnabled = true;  // Enable trigger detection
-    this.lastDiff = 0;           // Previous L-R difference sample
-    this.cooldownCounter = 0;    // Samples until next trigger allowed
-    this.triggerCount = 0;       // Total triggers detected
-    this.lastTriggerSample = 0;  // Sample position of last trigger
-    
     // Message handler
     this.port.onmessage = (event) => {
       if (event.data.type === 'loadJourneyMap') {
@@ -261,11 +251,12 @@ class BinauralProcessor extends AudioWorkletProcessor {
       return true;
     }
     
-    const blockSize = outputL.length;
+    const blockSize = outputL.length;  // Always 128 (Web Audio render quantum)
     
     // ========================================================================
-    // SAMPLE LOOP - Process each of 128 samples
+    // SAMPLE LOOP - Browser provides 128 samples per process() call
     // ========================================================================
+    // Process all 128 samples in this render quantum
     for (let i = 0; i < blockSize; i++) {
       
       // ======================================================================
@@ -311,59 +302,6 @@ class BinauralProcessor extends AudioWorkletProcessor {
       // ======================================================================
       outputL[i] = mixedL * this.volumeGain * 0.3;  // 0.3 for safety
       outputR[i] = mixedR * this.volumeGain * 0.3;
-      
-      // ======================================================================
-      // 7. TRIGGER DETECTION - Phase 1: Console logging (Non-destructive)
-      // ======================================================================
-      if (this.triggerEnabled) {
-        // Calculate L-R difference (timing extraction signal)
-        const diff = outputL[i] - outputR[i];
-        const absDiff = Math.abs(diff);
-        
-        // Decrement cooldown if active
-        if (this.cooldownCounter > 0) {
-          this.cooldownCounter--;
-        } else {
-          // PEAK DETECTION: Trigger when amplitude exceeds threshold
-          // and is greater than previous sample (rising to peak)
-          const threshold = 0.27;  // Adjust this value (0.0 to 1.0)
-          
-          if (absDiff > threshold && absDiff > Math.abs(this.lastDiff)) {
-            // TRIGGER DETECTED (PEAK)
-            this.triggerCount++;
-            
-            // Calculate adaptive cooldown (full beat period)
-            const beatPeriodSamples = sampleRate / beatHz;
-            this.cooldownCounter = Math.floor(beatPeriodSamples * 0.9);  // 90% of beat period
-            
-            // Calculate time since last trigger
-            const samplesSinceLastTrigger = this.currentSample - this.lastTriggerSample;
-            const timeSinceLastTrigger = (samplesSinceLastTrigger / sampleRate * 1000).toFixed(2);
-            
-            // Log trigger event
-            console.log(
-              `🎯 Trigger #${this.triggerCount} @ sample ${this.currentSample + i}, ` +
-              `beatHz=${beatHz.toFixed(2)}, peak=${absDiff.toFixed(3)}, ` +
-              `cooldown=${this.cooldownCounter} samples (${(this.cooldownCounter / sampleRate * 1000).toFixed(2)}ms), ` +
-              `interval=${timeSinceLastTrigger}ms`
-            );
-            
-            // Send trigger event to main thread (for ISO worklet)
-            this.port.postMessage({
-              type: 'trigger',
-              triggerCount: this.triggerCount,
-              beatHz: beatHz,
-              samplePosition: this.currentSample + i,
-              peakAmplitude: absDiff
-            });
-            
-            this.lastTriggerSample = this.currentSample + i;
-          }
-        }
-        
-        // Store for next iteration
-        this.lastDiff = diff;
-      }
       
       this.currentSample++;
       

@@ -9,6 +9,17 @@
  * perfect synchronization between Hz and pulse timing.
  * 
  * ============================================================================
+ * WEB AUDIO API CONSTANTS (IMMUTABLE)
+ * ============================================================================
+ * 
+ * RENDER QUANTUM SIZE: 128 samples
+ *   - Fixed by Web Audio API specification
+ *   - Browser calls process() every 128 samples automatically
+ *   - At 48kHz: 128 samples = 2.667ms between process() calls
+ *   - Cannot be changed - this is browser behavior
+ *   - Retrieved via: outputL.length (always returns 128)
+ * 
+ * ============================================================================
  * NEW ARCHITECTURE (Phase 2+3)
  * ============================================================================
  * 
@@ -18,10 +29,11 @@
  *   - Segments contain: type, hz/startHz/endHz, duration
  * 
  * AUDIO RENDERING THREAD (This Worklet):
- *   - Receives segments once at start
+ *   - Browser calls process() every 128 samples (render quantum)
+ *   - Each process() call: loop through all 128 samples
  *   - Calculates Hz per-sample using getHzAtSample()
  *   - Calculates next pulse using getNextPulseSample()
- *   - Check granularity: configurable (128, 64, 32, or 1 sample)
+ *   - Check granularity: configurable (how often to check for new pulses)
  *   - Both Hz and pulses use SAME segment data → no drift possible
  * 
  * WHY THIS ELIMINATES DRIFT:
@@ -29,14 +41,40 @@
  *   - NEW: One source (segments), one calculation point (worklet)
  *   - Mathematical impossibility of drift with identical inputs
  * 
- * CHECK GRANULARITY:
- *   - 128 samples: Default, ~2.6ms latency at 48kHz (usually imperceptible)
- *   - 64 samples: ~1.3ms latency (if 128 causes interruptions)
- *   - 32 samples: ~0.7ms latency (if 64 causes interruptions)
- *   - 1 sample: Perfect but higher CPU usage
+ * CHECK GRANULARITY (USER CONFIGURABLE):
+ *   Controls how often worklet checks if new pulse should spawn.
+ *   Trade-off between CPU usage and pulse spawn precision.
+ *   
+ *   - 128 samples: Check once per render quantum (~2.6ms at 48kHz)
+ *     * Lowest CPU usage
+ *     * Pulse may spawn up to 2.6ms late
+ *     * Usually imperceptible
+ *   
+ *   - 32 samples: Check 4 times per render quantum (~0.7ms at 48kHz)
+ *     * Good balance of CPU and accuracy
+ *     * Pulse may spawn up to 0.7ms late
+ *     * RECOMMENDED DEFAULT
+ *   
+ *   - 1 sample: Check every single sample (~0.02ms at 48kHz)
+ *     * Highest CPU usage
+ *     * Perfect sample-accurate spawning
+ *     * Use only if 32 has audible issues
+ * 
+ * NOTE: Check granularity ONLY affects when pulses spawn, not the render quantum.
+ *       Browser still calls process() every 128 samples regardless.
  * 
  * ============================================================================
  */
+
+/**
+ * ============================================================================
+ * CONFIGURATION - Single Source of Truth
+ * ============================================================================
+ */
+
+// Binaural-style frequency split: carrier ± (hz/2) for L/R channels
+// When false: both channels use carrier frequency (no split)
+const ENABLE_BINAURAL_SPLIT = true;  // Toggle binaural frequency split on/off
 
 /**
  * ============================================================================
@@ -133,7 +171,7 @@ function getNextPulseSample(compiledSegments, currentSample, sampleRate) {
   return currentSample + Math.round(interval * sampleRate);
 }
 
-function calculatePulseDuration(hz, dutyCycle = 0.8) {
+function calculatePulseDuration(hz, dutyCycle = 0.95) {
   const interval = calculate32nInterval(hz);
   return interval * dutyCycle;
 }
@@ -149,20 +187,20 @@ class AdsrEnvelope {
     this.stage = 'idle';
     this.value = 0;
     
-    // Envelope parameters (in samples)
-    this.attackSamples = Math.floor(0.000 * sampleRate);  // 5ms attack
-    this.releaseSamples = Math.floor(0.020 * sampleRate); // 20ms release
+    // Envelope parameters (in samples) - FIXED TIMING
+    this.attackSamples = Math.floor(0.000 * sampleRate);  // 0ms, essential for phase click
+    this.releaseSamples = Math.floor(0.015 * sampleRate); // 15ms release (faster for high Hz)
     
-    // Exponential coefficients
-    this.attackRatio = 1 - Math.pow(0.36787944, 1 / this.attackSamples);
-    this.releaseRatio = 1 - Math.pow(0.36787944, 1 / this.releaseSamples);
+    // Linear increment per sample (simple math, no sketchy exponentials)
+    this.attackIncrement = this.attackSamples > 0 ? 1.0 / this.attackSamples : 1.0;  // Rise from 0 to 1
+    this.releaseDecrement = 1.0 / this.releaseSamples;    // Fall from 1 to 0
     
     this.sampleCounter = 0;
   }
   
   trigger() {
     this.stage = 'attack';
-    this.value = 0;
+    this.value = 0.0;  // Start from EXACT zero
     this.sampleCounter = 0;
   }
   
@@ -170,6 +208,7 @@ class AdsrEnvelope {
     if (this.stage === 'idle') return;
     this.stage = 'release';
     this.sampleCounter = 0;
+    // Keep current value, ramp down from wherever we are
   }
   
   isActive() {
@@ -182,26 +221,27 @@ class AdsrEnvelope {
     }
     
     if (this.stage === 'attack') {
-      this.value += (1.0 - this.value) * this.attackRatio;
+      this.value += this.attackIncrement;
       this.sampleCounter++;
       
-      if (this.value >= 0.999 || this.sampleCounter >= this.attackSamples) {
+      if (this.value >= 1.0 || this.sampleCounter >= this.attackSamples) {
         this.value = 1.0;
         this.stage = 'sustain';
+        this.sampleCounter = 0;
       }
     } else if (this.stage === 'sustain') {
       this.value = 1.0;
     } else if (this.stage === 'release') {
-      this.value += (0.0 - this.value) * this.releaseRatio;
+      this.value -= this.releaseDecrement;
       this.sampleCounter++;
       
-      if (this.value <= 0.001 || this.sampleCounter >= this.releaseSamples) {
-        this.value = 0;
+      if (this.value <= 0.0 || this.sampleCounter >= this.releaseSamples) {
+        this.value = 0.0;
         this.stage = 'idle';
       }
     }
     
-    return this.value;
+    return Math.max(0.0, Math.min(1.0, this.value));  // Clamp to [0, 1]
   }
 }
 
@@ -231,14 +271,20 @@ class Voice {
     this.channel = channel;
     this.pulseId = pulseId;
     this.startSample = currentSample;
-    this.endSample = currentSample + durationSamples;
+    
+    // Calculate when release should START (not when pulse ends)
+    // Release needs time to ramp down, so start it BEFORE the pulse duration ends
+    const releaseDuration = this.envelope.releaseSamples;
+    this.releaseStartSample = currentSample + durationSamples - releaseDuration;
+    this.endSample = currentSample + durationSamples;  // When envelope should be silent
+    
     this.phase = 0;
     this.active = true;
     this.envelope.trigger();
   }
   
   checkRelease(currentSample) {
-    if (this.active && currentSample >= this.endSample) {
+    if (this.active && currentSample >= this.releaseStartSample && this.envelope.stage !== 'release') {
       this.envelope.release();
     }
   }
@@ -287,14 +333,13 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
     this.rawSegments = [];
     this.compiledSegments = [];
     this.carrierFrequency = 110;
-    this.checkGranularity = 128;  // Check for new pulses every N samples
     
     // Pulse state
     this.currentSample = 0;
     this.nextPulseSample = 0;
     this.pulseId = 0;
     this.channel = 'left';  // Alternating L/R
-    this.triggerPulse = false;  // Manual trigger flag
+    this.beatPhase = 0;  // LFO phase accumulator (0 to 2π)
     
     // Stereo width control
     this.leftPan = -1.0;
@@ -310,7 +355,6 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
         this.rawSegments = event.data.segments;
         this.compiledSegments = compileSegments(this.rawSegments);
         this.carrierFrequency = event.data.carrierFrequency || 110;
-        this.checkGranularity = event.data.checkGranularity || 128;
         
         // Calculate total duration
         const lastSegment = this.compiledSegments[this.compiledSegments.length - 1];
@@ -321,24 +365,19 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
         this.nextPulseSample = 0;
         this.pulseId = 0;
         this.channel = 'left';
+        this.beatPhase = 0;  // Reset LFO phase
         this.isLoaded = true;
         
         // Send confirmation
         this.port.postMessage({
           type: 'journeyMapLoaded',
           segmentCount: this.rawSegments.length,
-          totalDurationSeconds: this.totalDurationSamples / sampleRate,
-          checkGranularity: this.checkGranularity
+          totalDurationSeconds: this.totalDurationSamples / sampleRate
         });
         
       } else if (event.data.type === 'setWidth') {
         this.leftPan = event.data.panL;
         this.rightPan = event.data.panR;
-        
-      } else if (event.data.type === 'trigger') {
-        // Manual trigger from binaural worklet (via main thread)
-        // Spawn a pulse immediately
-        this.triggerPulse = true;
         
       } else if (event.data.type === 'schedule') {
         // Legacy support - ignore pre-calculated schedules
@@ -378,45 +417,53 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
       return true;
     }
     
-    const blockSize = outputL.length;
+    const blockSize = outputL.length;  // Always 128 (Web Audio render quantum)
     
     // ========================================================================
-    // SAMPLE LOOP - Process each of 128 samples
+    // SAMPLE LOOP - Browser provides 128 samples per process() call
     // ========================================================================
+    // Process all 128 samples in this render quantum
     for (let i = 0; i < blockSize; i++) {
       
       // ======================================================================
-      // 1. PULSE TRIGGERING - Manual trigger only (from binaural worklet)
+      // 1. PULSE TRIGGERING - LFO Phase-Wrap System
       // ======================================================================
-      // Check for manual trigger (from binaural worklet)
-      if (this.triggerPulse) {
-        // Calculate Hz at current sample
-        const hz = getHzAtSample(this.compiledSegments, this.currentSample, sampleRate);
+      // Calculate Hz at current sample from journey map
+      const hz = getHzAtSample(this.compiledSegments, this.currentSample, sampleRate);
+      
+      // Calculate omega (phase increment per sample)
+      const omega = 2 * Math.PI * hz / sampleRate;
+      
+      // Accumulate phase
+      this.beatPhase += omega;
+      
+      // Check for phase wraparound (2π crossing = new pulse)
+      // Use while loop to catch multiple wraps at high Hz (e.g., 25Hz)
+      while (this.beatPhase >= 2 * Math.PI) {
+        this.beatPhase -= 2 * Math.PI;  // Wrap phase back to 0
         
         // Calculate pulse duration
-        const pulseDurationSeconds = calculatePulseDuration(hz, 0.8);
+        const pulseDurationSeconds = calculatePulseDuration(hz, 0.9);
         const pulseDurationSamples = Math.round(pulseDurationSeconds * sampleRate);
         
-        // Calculate frequency split (binaural-style)
-        const frequency = this.channel === 'left' 
-          ? this.carrierFrequency - (hz / 2)
-          : this.carrierFrequency + (hz / 2);
+        // Calculate frequency (with optional binaural split)
+        const frequency = ENABLE_BINAURAL_SPLIT
+          ? (this.channel === 'left' 
+              ? this.carrierFrequency - (hz / 2)
+              : this.carrierFrequency + (hz / 2))
+          : this.carrierFrequency;  // No split: both channels use carrier
         
         // Find free voice and trigger
         const voice = this._findFreeVoice();
         if (voice) {
           voice.trigger(frequency, this.channel, this.pulseId, this.currentSample, pulseDurationSamples);
-          console.log(`🔊 ISO Pulse #${this.pulseId} triggered by binaural peak @ sample ${this.currentSample}, Hz=${hz.toFixed(2)}, dur=${pulseDurationSamples} samples`);
+          // console.log(`🔊 ISO Pulse #${this.pulseId} @ sample ${this.currentSample}, Hz=${hz.toFixed(2)}, dur=${pulseDurationSamples} samples`);
         }
         
         // Alternate channels
         this.channel = this.channel === 'left' ? 'right' : 'left';
         this.pulseId++;
-        this.triggerPulse = false;  // Reset flag
       }
-      
-      // SEGMENT-BASED AUTO-TRIGGERING DISABLED
-      // Now only triggers on binaural peak events
       
       // ======================================================================
       // 2. RELEASE CHECK - Check if any voices should start release

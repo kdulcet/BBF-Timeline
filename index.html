@@ -498,12 +498,8 @@
                 binauralSynth.workletNode.port.onmessage = (event) => {
                     if (event.data.type === 'debug') {
                         console.log(`[Binaural Worklet] ${event.data.msg}`);
-                    } else if (event.data.type === 'trigger') {
-                        // Forward trigger to ISO worklet
-                        if (workletNode) {
-                            workletNode.port.postMessage({ type: 'trigger' });
-                        }
                     }
+                    // Trigger relay removed - ISO worklet now uses LFO phase-wrap triggering
                 };
             }
             
@@ -565,10 +561,14 @@
                     
                     // Send journey map segments to worklet (not pre-calculated schedule)
                     // Worklet will calculate Hz/pulses on-demand from segments
-                    // Check granularity: 128 samples = ~2.6ms at 48kHz (adjustable if needed)
-                    const checkGranularity = 1;  // Can reduce to 32 or 64 if timing issues occur
+                    
+                    // Check granularity: How often worklet checks for new pulses (NOT render quantum size)
+                    // 32 = check 4 times per 128-sample quantum (~0.7ms latency at 48kHz) - RECOMMENDED
+                    // 128 = check once per quantum (~2.6ms latency) - lower CPU
+                    // 1 = check every sample (~0.02ms latency) - highest CPU, use only if needed
+                    const checkGranularity = 32;  // Default: good balance of CPU and accuracy
                     timeline.sendSegmentsToWorklet(workletNode, carrierHz, checkGranularity);
-                    console.log(`[AudioWorklet] Journey map sent to worklet (check every ${checkGranularity} samples)`);
+                    console.log(`[ISO Worklet] Journey map sent (check every ${checkGranularity} samples for new pulses)`);
                     
                     // Store references for width control
                     window.isoWorkletWidth = {
