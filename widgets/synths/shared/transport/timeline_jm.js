@@ -151,7 +151,9 @@ class JMTimeline {
       return segment.hz;
     } else if (segment.type === 'transition') {
       const progress = (timelinePos - segment.time) / segment.duration;
-      return segment.startHz + (segment.endHz - segment.startHz) * progress;
+      // Cosine easing: smooth S-curve from 0 to 1
+      const easedProgress = (1 - Math.cos(progress * Math.PI)) / 2;
+      return segment.startHz + (segment.endHz - segment.startHz) * easedProgress;
     }
 
     return 5.0;

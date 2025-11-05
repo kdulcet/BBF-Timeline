@@ -76,6 +76,13 @@
 // When false: both channels use carrier frequency (no split)
 const ENABLE_BINAURAL_SPLIT = true;  // Toggle binaural frequency split on/off
 
+// Pulse duty cycle: controls pulse duration relative to interval
+// 0.5 = 50% duty (pulse half as long as interval, large gap)
+// 0.9 = 90% duty (pulse nearly full interval, small gap)
+// 1.0 = 100% duty (pulse equals interval, no gap - voices touch)
+// >1.0 = overlap (deliberate polyphonic overlap between pulses)
+const DEFAULT_DUTY_CYCLE = 1.5;  // Adjustable pulse duration (can exceed 1.0 for overlap)
+
 /**
  * ============================================================================
  * HELPER FUNCTIONS (Copied inline from jm_worklet_helper.js)
@@ -137,7 +144,9 @@ function getHzAt(compiledSegments, timeSeconds) {
   } else if (segment.type === 'transition') {
     const progress = (timeSeconds - segment.startTime) / segment.duration;
     const clampedProgress = Math.max(0, Math.min(1, progress));
-    return segment.startHz + (segment.endHz - segment.startHz) * clampedProgress;
+    // Cosine easing: smooth S-curve from 0 to 1
+    const easedProgress = (1 - Math.cos(clampedProgress * Math.PI)) / 2;
+    return segment.startHz + (segment.endHz - segment.startHz) * easedProgress;
   }
 
   return 5.0;
@@ -171,7 +180,7 @@ function getNextPulseSample(compiledSegments, currentSample, sampleRate) {
   return currentSample + Math.round(interval * sampleRate);
 }
 
-function calculatePulseDuration(hz, dutyCycle = 0.95) {
+function calculatePulseDuration(hz, dutyCycle = 3) {
   const interval = calculate32nInterval(hz);
   return interval * dutyCycle;
 }
@@ -345,6 +354,9 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
     this.leftPan = -1.0;
     this.rightPan = 1.0;
     
+    // Pulse duration control
+    this.dutyCycle = DEFAULT_DUTY_CYCLE;  // Dynamic duty cycle (adjustable at runtime)
+    
     // Timing
     this.totalDurationSamples = 0;
     this.isLoaded = false;
@@ -378,6 +390,10 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
       } else if (event.data.type === 'setWidth') {
         this.leftPan = event.data.panL;
         this.rightPan = event.data.panR;
+        
+      } else if (event.data.type === 'setDutyCycle') {
+        this.dutyCycle = event.data.dutyCycle;
+        // console.log(`ISO Worklet: Duty cycle set to ${this.dutyCycle} (${(this.dutyCycle * 100).toFixed(0)}%)`);
         
       } else if (event.data.type === 'schedule') {
         // Legacy support - ignore pre-calculated schedules
@@ -442,8 +458,8 @@ class ISOPulseProcessor extends AudioWorkletProcessor {
       while (this.beatPhase >= 2 * Math.PI) {
         this.beatPhase -= 2 * Math.PI;  // Wrap phase back to 0
         
-        // Calculate pulse duration
-        const pulseDurationSeconds = calculatePulseDuration(hz, 0.9);
+        // Calculate pulse duration (use instance duty cycle for runtime control)
+        const pulseDurationSeconds = calculatePulseDuration(hz, this.dutyCycle);
         const pulseDurationSamples = Math.round(pulseDurationSeconds * sampleRate);
         
         // Calculate frequency (with optional binaural split)
