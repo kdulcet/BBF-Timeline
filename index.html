@@ -342,9 +342,20 @@
         document.getElementById('width1').addEventListener('input', function(e) {
             const widthValue = parseInt(e.target.value);
             
-            // Set ISO synth width (0-100)
+            // Set ISO synth width (0-100) - for old node-based system
             if (window.isoSynth) {
                 isoSynth.setWidth(widthValue);
+            }
+            
+            // Set ISO worklet width (0-100) - for AudioWorklet system
+            if (window.isoWorkletWidth && window.isoWorkletWidth.workletNode) {
+                const widthFactor = widthValue / 100; // 0.0 to 1.0
+                window.isoWorkletWidth.workletNode.port.postMessage({
+                    type: 'setWidth',
+                    panL: -widthFactor,  // L channel: -1 to 0
+                    panR: widthFactor    // R channel: 0 to +1
+                });
+                window.isoWorkletWidth.currentWidth = widthValue;
             }
         });
         
@@ -482,6 +493,15 @@
             // Load binaural worklet
             await binauralSynth.init();
             
+            // Add message listener for binaural worklet debug messages
+            if (binauralSynth.workletNode) {
+                binauralSynth.workletNode.port.onmessage = (event) => {
+                    if (event.data.type === 'debug') {
+                        console.log(`[Binaural Worklet] ${event.data.msg}`);
+                    }
+                };
+            }
+            
             // Set initial carrier frequency for binaural (same as ISO for now)
             binauralSynth.setCarrierFrequency(initialCarrierHz);
             
@@ -548,10 +568,26 @@
                         pulses: pulseSchedule
                     });
                     
-                    // Connect worklet to output
-                    workletNode.connect(audioContext.destination);
+                    // Store references for width control
+                    window.isoWorkletWidth = {
+                        workletNode: workletNode,
+                        currentWidth: 100
+                    };
                     
-                    console.log('[AudioWorklet] Pulse processor connected and ready');
+                    // Set initial width from width1 slider
+                    const initialWidth1 = parseInt(document.getElementById('width1').value) || 100;
+                    const widthFactor = initialWidth1 / 100; // 0.0 to 1.0
+                    workletNode.port.postMessage({
+                        type: 'setWidth',
+                        panL: -widthFactor,  // L channel: -1 to 0
+                        panR: widthFactor    // R channel: 0 to +1
+                    });
+                    window.isoWorkletWidth.currentWidth = initialWidth1;
+                    
+                    // Connect worklet → masterGain → destination
+                    workletNode.connect(isoSynth.masterGain);
+                    
+                    console.log('[AudioWorklet] Pulse processor connected');
                     
                     // Store reference for cleanup
                     window.workletNode = workletNode;
@@ -776,27 +812,49 @@
             // Play/Stop button listener
             document.getElementById('playStopBtn').addEventListener('click', togglePlayStop);
             
-            // Timeline event listeners - pulse events for audio only
+            // Timeline event listeners - pulse events for audio synths only (no logging)
             document.addEventListener('timeline.pulse.32n', (event) => {
-                const { hz, time } = event.detail;
-                
-                console.log(`32n Pulse: ${hz.toFixed(2)}Hz at ${time.toFixed(3)}s`);
+                // 32n pulses are consumed by ISO synth only - no console spam
             });
+            
+            // Periodic Hz polling for smooth transition verification
+            let hzPollInterval = null;
             
             // Timeline state change listeners
             document.addEventListener('timeline.started', (event) => {
                 console.log('Timeline Started:', event.detail);
                 updateStatus('Timeline Running...');
+                
+                // Start Hz polling every 500ms to verify smooth transitions
+                if (timeline) {
+                    hzPollInterval = setInterval(() => {
+                        const currentHz = timeline.getCurrentHz();
+                        const elapsed = audioContext.currentTime - timeline.startTime;
+                        if (currentHz !== null) {
+                            console.log(`Hz Poll: ${currentHz.toFixed(2)}Hz at ${elapsed.toFixed(2)}s`);
+                        }
+                    }, 500);
+                }
             });
             
             document.addEventListener('timeline.stopped', (event) => {
                 console.log('Timeline Stopped:', event.detail);
                 updateStatus('Timeline Ready');
+                
+                // Stop Hz polling
+                if (hzPollInterval) {
+                    clearInterval(hzPollInterval);
+                    hzPollInterval = null;
+                }
             });
             
             document.addEventListener('timeline.hz.changed', (event) => {
-                const { hz, wave_type } = event.detail;
-                console.log(`Hz Changed: ${hz.toFixed(2)}Hz (${wave_type})`);
+                const data = event.detail;
+                if (data.type === 'plateau') {
+                    console.log(`📍 Hz Plateau: ${data.hz.toFixed(2)}Hz at ${data.time.toFixed(3)}s`);
+                } else if (data.type === 'transition') {
+                    console.log(`📈 Hz Ramp: ${data.startHz.toFixed(2)}Hz → ${data.endHz.toFixed(2)}Hz over ${data.duration.toFixed(2)}s`);
+                }
             });
             
             // Initialize status

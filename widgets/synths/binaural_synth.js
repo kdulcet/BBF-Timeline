@@ -221,17 +221,14 @@ class BinauralSynth {
     const leftFreq = this.carrierFrequency - (beatHz / 2);
     const rightFreq = this.carrierFrequency + (beatHz / 2);
     
-    // Get current AudioContext time
-    const contextTime = this.audioContext.currentTime;
+    console.log(`[Binaural] Sending scheduleFrequencies: L=${leftFreq.toFixed(2)}Hz, R=${rightFreq.toFixed(2)}Hz at time=${time.toFixed(3)}s`);
     
-    console.log(`[Binaural] Sending scheduleFrequencies: L=${leftFreq.toFixed(2)}Hz, R=${rightFreq.toFixed(2)}Hz at timeline=${time.toFixed(3)}s, contextTime=${contextTime.toFixed(3)}s`);
-    
-    // Send instant frequency change scheduled at exact time
+    // Send instant frequency change scheduled at exact timeline time
     this.workletNode.port.postMessage({
       type: 'scheduleFrequencies',
       leftFreq: leftFreq,
       rightFreq: rightFreq,
-      time: contextTime, // Use current AudioContext time, not timeline time
+      time: time, // Use timeline time for proper scheduling
       rampDuration: 0 // Instant change
     });
   }

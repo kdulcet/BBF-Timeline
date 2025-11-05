@@ -342,15 +342,47 @@ class JMTimeline {
       const segmentStartTime = startTime + segment.time;
       
       if (segment.type === 'plateau') {
+        // Schedule plateau Hz
         param.setValueAtTime(segment.hz, segmentStartTime);
+        
+        // Dispatch Hz event for plateau (no ramp)
+        this._dispatchHzEvent({
+          type: 'plateau',
+          hz: segment.hz,
+          time: segmentStartTime
+        });
+        
       } else if (segment.type === 'transition') {
+        // Schedule transition start
         param.setValueAtTime(segment.startHz, segmentStartTime);
-        param.linearRampToValueAtTime(segment.endHz, segmentStartTime + segment.duration);
+        
+        // Schedule transition end
+        const transitionEndTime = segmentStartTime + segment.duration;
+        param.linearRampToValueAtTime(segment.endHz, transitionEndTime);
+        
+        // Dispatch Hz event for transition WITH RAMP DATA
+        this._dispatchHzEvent({
+          type: 'transition',
+          startHz: segment.startHz,
+          endHz: segment.endHz,
+          startTime: segmentStartTime,
+          endTime: transitionEndTime,
+          duration: segment.duration
+        });
       }
       
       // Store for segment tracking
       this._segmentEvents.add({ time: segmentStartTime, segment, index: segment.index });
     }
+  }
+  
+  /**
+   * Dispatch Hz changed event
+   * @private
+   * @param {Object} eventData - Event data containing type, hz/frequencies, and time info
+   */
+  _dispatchHzEvent(eventData) {
+    this._dispatchEvent(TimelineEvents.HZ_CHANGED, eventData);
   }
 
   // ============================================================================
