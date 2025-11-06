@@ -48,6 +48,15 @@ const DEFAULT_DUTY_CYCLE = 0.5;
 
 // ISO Pulse Frequency Randomization (0.0 = no randomization, 1.0 = full ±beatHz/2 range)
 // This creates pitch variation for mono compatibility and smoother perception
+
+/**
+ * Hz calculation granularity (samples between recalculations)
+ * 1 = Calculate every sample (smoothest, highest CPU)
+ * 32 = Calculate every 32 samples (~0.7ms at 48kHz)
+ * 128 = Calculate per block (~2.6ms at 48kHz)
+ * Lower = smoother transitions, higher = better performance
+ */
+const HZ_CHECK_GRANULARITY = 1;  // Per-sample for zero clicking
 const ISO_FREQUENCY_RANDOMIZATION = 0.0;  // 50% of the beatHz/2 range
 
 /**
@@ -346,10 +355,12 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     super();
     
     // ========================================================================
-    // BINAURAL SYSTEM - Continuous tones
+    // BINAURAL SYSTEM - Continuous tones (Phase-Locked)
     // ========================================================================
-    this.leftVoiceBinaural = new Voice(sampleRate, false);
-    this.rightVoiceBinaural = new Voice(sampleRate, false);
+    // Phase-locked synthesis: Single carrier + beat phase for both channels
+    // This eliminates drift by enforcing phase relationship every sample
+    this.carrierPhase = 0;  // Shared carrier phase for L/R channels
+    this.beatPhase = 0;     // Beat phase for frequency offset
     
     // ========================================================================
     // ISO SYSTEM - Discrete pulses
@@ -421,17 +432,14 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
         
       } else if (event.data.type === 'start') {
         if (this.isLoaded) {
-          this.leftVoiceBinaural.start();
-          this.rightVoiceBinaural.start();
+          this.carrierPhase = 0;  // Reset carrier phase
+          this.beatPhase = 0;     // Reset beat phase
           this.isPlaying = true;
           this.currentSample = 0;
-          this.beatPhase = 0;
           this.port.postMessage({ type: 'started' });
         }
         
       } else if (event.data.type === 'stop') {
-        this.leftVoiceBinaural.stop();
-        this.rightVoiceBinaural.stop();
         this.isPlaying = false;
         this.port.postMessage({ type: 'stopped' });
         
@@ -518,10 +526,6 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
       console.log('[Worklet process()] Starting audio generation!');
     }
     
-    // Calculate carrier frequency with octave adjustment
-    const carrierMultiplier = Math.pow(2, this.carrierOctave);
-    const actualCarrier = this.carrierFrequency * carrierMultiplier;
-    
     // Calculate crossfade gains (constant-power law)
     const crossfadeAngle = this.crossfade * Math.PI / 2;
     const binauralGain = Math.cos(crossfadeAngle);  // 1.0 → 0.0
@@ -538,73 +542,118 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
       const timeSeconds = this.currentSample / sampleRate;
       const beatHz = getHzAt(this.compiledSegments, timeSeconds);
       
-      // ======================================================================
-      // 2. BINAURAL SYSTEM - Continuous tones
-      // ======================================================================
-      const leftFreqBinaural = actualCarrier - (beatHz / 2);
-      const rightFreqBinaural = actualCarrier + (beatHz / 2);
-      
-      this.leftVoiceBinaural.setFrequency(leftFreqBinaural);
-      this.rightVoiceBinaural.setFrequency(rightFreqBinaural);
-      
-      const binauralLeftSample = this.leftVoiceBinaural.process();
-      const binauralRightSample = this.rightVoiceBinaural.process();
+      // Calculate carrier frequency with octave adjustment (per-sample)
+      const carrierMultiplier = Math.pow(2, this.carrierOctave);
+      const actualCarrier = this.carrierFrequency * carrierMultiplier;
       
       // ======================================================================
-      // 3. ISO SYSTEM - LFO Phase-Wrap Pulse Triggering
+      // 2. BINAURAL SYSTEM - Phase-Locked Continuous Tones
       // ======================================================================
-      // Calculate omega (phase increment per sample)
-      const omega = 2 * Math.PI * beatHz / sampleRate;
+      // Calculate phase increments (omega = 2π × frequency / sampleRate)
+      const carrierOmega = 2 * Math.PI * actualCarrier / sampleRate;
+      const beatOmega = 2 * Math.PI * beatHz / sampleRate;
       
-      // Accumulate phase
-      this.beatPhase += omega;
+      // Accumulate carrier phase
+      this.carrierPhase += carrierOmega;
       
-      // Check for phase wraparound (2π crossing = new pulse)
-      while (this.beatPhase >= 2 * Math.PI) {
-        this.beatPhase -= 2 * Math.PI;
+      // Wrap carrier phase smoothly to prevent clicking (modulo operation)
+      // Using while loop for proper wrapping in case of large jumps
+      while (this.carrierPhase >= 2 * Math.PI) {
+        this.carrierPhase -= 2 * Math.PI;
+      }
+      while (this.carrierPhase < 0) {
+        this.carrierPhase += 2 * Math.PI;
+      }
+      
+      // Accumulate beat phase (NEVER wrap - used continuously by binaural)
+      this.beatPhase += beatOmega;
+      
+      // Generate phase-locked samples using UNWRAPPED beatPhase
+      // Left channel: carrier - beat/2 (lower frequency)
+      // Right channel: carrier + beat/2 (higher frequency)
+      // Phase relationship enforced mathematically every sample → zero drift
+      // Sine is periodic, so unwrapped phase is fine (sin(x) = sin(x + 2πn))
+      const binauralLeftSample = Math.sin(this.carrierPhase - (this.beatPhase / 2));
+      const binauralRightSample = Math.sin(this.carrierPhase + (this.beatPhase / 2));
+      
+      // ======================================================================
+      // 3. ISO SYSTEM - Gnaural-style Continuous Carrier + Square LFO
+      // ======================================================================
+      // ARCHITECTURE (discovered from Gnaural analysis):
+      // - Continuous carrier wave (same as binaural, never restarted)
+      // - Square LFO with slight slew controls L/R channel visibility
+      // - At 20Hz: 50ms period = 25ms per channel + slight overlap
+      // - When summed to mono: continuous wave (no gaps)
+      // - Slew: 1-2ms absolute time for smooth edges (Gnaural spec)
+      
+      // Generate continuous ISO carrier (same frequency as binaural)
+      const isoCarrierSample = Math.sin(this.carrierPhase);
+      
+      // Calculate square LFO position from wrapped beat phase
+      const wrappedPhase = this.beatPhase % (2 * Math.PI);
+      const lfoProgress = wrappedPhase / (2 * Math.PI);  // 0.0 to 1.0
+      
+      // Calculate slew time: 3ms converted to phase units (increased for transitions)
+      const beatPeriod = 1.0 / beatHz;  // Period in seconds
+      const slewTime = 0.003;  // 3ms slew time (doubled for smooth transitions)
+      let slewPhase = slewTime / beatPeriod;  // Slew as fraction of cycle
+      
+      // Clamp slew phase to reasonable limits (prevent extremes at very low/high Hz)
+      const minSlewPhase = 0.01;   // Minimum 1% of cycle
+      const maxSlewPhase = 0.25;   // Maximum 25% of cycle
+      slewPhase = Math.max(minSlewPhase, Math.min(maxSlewPhase, slewPhase));
+      
+      // Square wave with duty cycle control
+      // dutyCycle = 0.5 means 50% on each channel (perfect square)
+      // dutyCycle > 0.5 means longer pulses with overlap
+      // dutyCycle < 0.5 means shorter pulses with gaps
+      const halfDuty = this.dutyCycle / 2;
+      
+      let isoLeftGain = 0;
+      let isoRightGain = 0;
+      
+      if (lfoProgress < 0.5) {
+        // First half: Left channel active
+        const leftEnd = halfDuty;
         
-        // Calculate pulse duration
-        const pulseDurationSeconds = calculatePulseDuration(beatHz, this.dutyCycle);
-        const pulseDurationSamples = Math.round(pulseDurationSeconds * sampleRate);
-        
-        // Calculate frequency for this pulse with randomization
-        // Instead of strict L/R alternation, randomize within ±(beatHz/2) range
-        // Random value from -1.0 to +1.0, scaled by randomization amount
-        const randomOffset = (Math.random() * 2 - 1) * ISO_FREQUENCY_RANDOMIZATION;
-        const frequencyOffset = (beatHz / 2) * randomOffset;
-        const frequencyISO = actualCarrier + frequencyOffset;
-        
-        // Find free voice and trigger
-        const voice = this._findFreeVoice();
-        if (voice) {
-          voice.trigger(frequencyISO, this.channel, this.pulseId, this.currentSample, pulseDurationSamples);
+        if (lfoProgress < slewPhase) {
+          // Slew in to left at cycle start (fade from 0)
+          const slewProgress = lfoProgress / slewPhase;
+          isoLeftGain = slewProgress;
+        } else if (lfoProgress < leftEnd - slewPhase) {
+          // Full left (between slew-in and slew-out)
+          isoLeftGain = 1.0;
+        } else if (lfoProgress < leftEnd) {
+          // Slew out from left (fade to 0)
+          const slewProgress = (lfoProgress - (leftEnd - slewPhase)) / slewPhase;
+          isoLeftGain = 1.0 - slewProgress;
         }
         
-        // Alternate channels for stereo positioning (frequency is now randomized)
-        this.channel = this.channel === 'left' ? 'right' : 'left';
-        this.pulseId++;
-      }
-      
-      // Check if any ISO pulses should start release
-      for (let voice of this.voicesISO) {
-        voice.checkRelease(this.currentSample);
-      }
-      
-      // Generate audio from all active ISO voices
-      let isoLeftSample = 0;
-      let isoRightSample = 0;
-      
-      for (let voice of this.voicesISO) {
-        if (voice.isActive()) {
-          const voiceSample = voice.process();
-          
-          if (voice.channel === 'left') {
-            isoLeftSample += voiceSample;
-          } else {
-            isoRightSample += voiceSample;
-          }
+        // Right channel stays at 0 during first half
+        isoRightGain = 0;
+      } else {
+        // Second half: Right channel active
+        const rightProgress = lfoProgress - 0.5;
+        const rightStart = 0;
+        const rightEnd = halfDuty;
+        
+        if (rightProgress < slewPhase) {
+          // Slew in to right (fade from 0)
+          const slewProgress = rightProgress / slewPhase;
+          isoRightGain = slewProgress;
+        } else if (rightProgress < rightEnd - slewPhase) {
+          // Full right (between slew-in and slew-out)
+          isoRightGain = 1.0;
+        } else if (rightProgress < rightEnd) {
+          // Slew out from right (fade to 0)
+          const slewProgress = (rightProgress - (rightEnd - slewPhase)) / slewPhase;
+          isoRightGain = 1.0 - slewProgress;
         }
       }
+      
+      // Apply LFO gains to continuous carrier
+      const isoLeftSample = isoCarrierSample * isoLeftGain;
+      const isoRightSample = isoCarrierSample * isoRightGain;
       
       // ======================================================================
       // 4. STEREO WIDTH - Apply SEPARATELY to Binaural and ISO
@@ -657,9 +706,8 @@ class BinauralISOProcessor extends AudioWorkletProcessor {
     // ========================================================================
     // COMPLETION CHECK
     // ========================================================================
-    const allVoicesSilent = this.voicesISO.every(v => !v.isActive()) && 
-                            !this.leftVoiceBinaural.isActive() && 
-                            !this.rightVoiceBinaural.isActive();
+    // Phase-locked binaural is always active when playing, so only check ISO voices
+    const allVoicesSilent = this.voicesISO.every(v => !v.isActive());
     const pastEnd = this.currentSample >= this.totalDurationSamples;
     
     if (allVoicesSilent && pastEnd && this.isLoaded) {
